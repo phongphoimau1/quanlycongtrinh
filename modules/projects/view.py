@@ -31,7 +31,6 @@ if data:
         hide_index=True
     )
     
-    # 200 IQ UX: Thanh chọn nhanh công trình để xem chi tiết
     st.write("---")
     col_sel, col_btn = st.columns([3, 1])
     
@@ -40,18 +39,13 @@ if data:
         
     with col_btn:
         st.write("")
-        if st.button("Mở chi tiết ➡️", use_container_width=True):
-            # Bước 1: Gắn mã công trình vào URL
-            st.query_params["code"] = selected_code
+        
+        # 1. Hàm Callback khóa dữ liệu tuyệt đối vào bộ nhớ
+        def save_code_to_state(code):
+            st.session_state["selected_project_code"] = code
             
-            # Bước 2: Chuyển trang bằng đường dẫn gốc
+        # 2. Gắn callback vào nút bấm qua thuộc tính on_click và args
+        if st.button("Mở chi tiết ➡️", use_container_width=True, on_click=save_code_to_state, args=(selected_code,)):
             st.switch_page("modules/projects/detail.py")
 else:
-    with col_btn:
-        st.write("")
-        if st.button("Mở chi tiết ➡️", use_container_width=True):
-            # Lưu mã vào bộ nhớ phiên (Session State) thay vì URL
-            st.session_state["selected_project_code"] = selected_code
-            
-            # Chuyển trang
-            st.switch_page("modules/projects/detail.py")
+    st.info("Không tìm thấy công trình nào.")
