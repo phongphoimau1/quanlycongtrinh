@@ -4,7 +4,7 @@ import time
 
 st.title("🔎 Chi tiết Công trình")
 
-# Lấy mã công trình từ Session State
+# 1. Lấy mã công trình từ Session State một cách an toàn
 project_code = st.session_state.get("selected_project_code")
 
 if not project_code:
@@ -12,15 +12,13 @@ if not project_code:
     if st.button("⬅️ Trở về danh sách"):
         st.switch_page("modules/projects/view.py")
 else:
-    project = get_project_by_code(project_code)
-    # ... (giữ nguyên toàn bộ phần code hiển thị thông tin bên dưới)
-else:
+    # 2. Lấy dữ liệu công trình từ DB
     project = get_project_by_code(project_code)
     
     if not project:
         st.error(f"Không tìm thấy dữ liệu cho mã: {project_code}")
     else:
-        # Bố cục 2 cột (Trái: Thông tin, Phải: Thao tác tiến độ)
+        # 3. Hiển thị UI chia 2 cột
         col_info, col_action = st.columns([6, 4])
         
         with col_info:
@@ -35,7 +33,6 @@ else:
             st.subheader("⏳ Quản lý Tiến độ")
             current_status = project['status']
             
-            # Danh sách trạng thái chuẩn hóa
             status_options = ["Mới tiếp nhận", "Đang xử lý", "Chờ bổ sung", "Hoàn thành", "Đã hủy"]
             try:
                 default_idx = status_options.index(current_status)
@@ -50,10 +47,12 @@ else:
                 else:
                     with st.spinner("Đang cập nhật..."):
                         update_project_status(project['id'], new_status)
-                        st.success("Cập nhật thành công! Lịch sử đã được tự động ghi nhận.")
+                        st.success("Cập nhật thành công! Lịch sử đã tự động ghi nhận.")
                         time.sleep(1)
-                        st.rerun() # Tải lại trang để cập nhật UI
+                        st.rerun() # Tải lại UI
                         
         st.write("---")
         if st.button("⬅️ Trở về danh sách"):
+            # IQ 200: Xóa mã khỏi bộ nhớ để tránh kẹt dữ liệu cũ cho lần vào sau
+            st.session_state["selected_project_code"] = None 
             st.switch_page("modules/projects/view.py")
