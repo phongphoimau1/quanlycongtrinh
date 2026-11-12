@@ -37,8 +37,18 @@ if data:
     with col_sel:
         selected_code = st.selectbox("Chọn công trình để xem chi tiết / cập nhật:", df["Mã CT"].tolist())
     with col_btn:
+        # 200 IQ UX: Thanh chọn nhanh công trình để xem chi tiết
+    st.write("---")
+    col_sel, col_btn = st.columns([3, 1])
+    with col_sel:
+        selected_code = st.selectbox("Chọn công trình để xem chi tiết / cập nhật:", df["Mã CT"].tolist())
+    with col_btn:
         st.write("")
         if st.button("Mở chi tiết ➡️", use_container_width=True):
-            st.switch_page(f"modules/projects/detail.py?code={selected_code}")
+            # Bước 1: Gắn mã công trình vào URL
+            st.query_params["code"] = selected_code
+            
+            # Bước 2: Chuyển trang bằng đường dẫn gốc (không chứa ?code=...)
+            st.switch_page("modules/projects/detail.py")
 else:
     st.info("Không tìm thấy công trình nào.")
