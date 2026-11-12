@@ -17,3 +17,19 @@ def create_project(data: dict):
     data["status"] = "Mới tiếp nhận"
     # project_code sẽ tự động được Supabase sinh ra qua Trigger
     return supabase.table("projects").insert(data).execute().data
+def get_dashboard_stats():
+    # Lấy toàn bộ project để thống kê (có thể tối ưu bằng RPC sau nếu data lớn)
+    response = supabase.table("projects").select("status").execute()
+    projects = response.data
+    
+    total = len(projects)
+    new_projects = sum(1 for p in projects if p["status"] == "Mới tiếp nhận")
+    processing = sum(1 for p in projects if p["status"] == "Đang xử lý")
+    completed = sum(1 for p in projects if p["status"] == "Hoàn thành")
+    
+    return {
+        "total": total,
+        "new": new_projects,
+        "processing": processing,
+        "completed": completed
+    }
