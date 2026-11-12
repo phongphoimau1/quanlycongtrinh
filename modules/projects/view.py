@@ -47,4 +47,11 @@ if data:
             # Bước 2: Chuyển trang bằng đường dẫn gốc
             st.switch_page("modules/projects/detail.py")
 else:
-    st.info("Không tìm thấy công trình nào.")
+    with col_btn:
+        st.write("")
+        if st.button("Mở chi tiết ➡️", use_container_width=True):
+            # Lưu mã vào bộ nhớ phiên (Session State) thay vì URL
+            st.session_state["selected_project_code"] = selected_code
+            
+            # Chuyển trang
+            st.switch_page("modules/projects/detail.py")
