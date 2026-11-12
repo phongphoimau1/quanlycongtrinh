@@ -4,14 +4,16 @@ import time
 
 st.title("🔎 Chi tiết Công trình")
 
-# Lấy mã công trình từ Query Parameters (URL)
-query_params = st.query_params
-project_code = query_params.get("code")
+# Lấy mã công trình từ Session State
+project_code = st.session_state.get("selected_project_code")
 
 if not project_code:
     st.warning("Không tìm thấy mã công trình. Vui lòng chọn công trình từ danh sách.")
     if st.button("⬅️ Trở về danh sách"):
         st.switch_page("modules/projects/view.py")
+else:
+    project = get_project_by_code(project_code)
+    # ... (giữ nguyên toàn bộ phần code hiển thị thông tin bên dưới)
 else:
     project = get_project_by_code(project_code)
     
