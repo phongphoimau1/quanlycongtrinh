@@ -33,3 +33,11 @@ def get_dashboard_stats():
         "processing": processing,
         "completed": completed
     }
+def get_project_by_code(project_code):
+    """Lấy chi tiết 1 công trình dựa vào mã"""
+    response = supabase.table("projects").select("*").eq("project_code", project_code).execute()
+    return response.data[0] if response.data else None
+
+def update_project_status(project_id, new_status):
+    """Cập nhật trạng thái công trình (Trigger DB sẽ tự động lưu lịch sử)"""
+    return supabase.table("projects").update({"status": new_status}).eq("id", project_id).execute().data
