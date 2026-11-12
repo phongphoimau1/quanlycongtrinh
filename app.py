@@ -2,7 +2,21 @@ import streamlit as st
 import os
 import traceback
 
-st.set_page_config(page_title="Quản lý công trình", layout="wide")
+# Thêm dòng này vào phần định nghĩa các trang
+path_project_detail = os.path.join(BASE_DIR, "modules", "projects", "detail.py")
+
+page_project_detail = st.Page(
+    path_project_detail, 
+    title="Chi tiết công trình", 
+    icon="🔎", 
+    url_path="project-detail"
+)
+
+# Thêm page_project_detail vào danh sách "Nghiệp vụ"
+pages = {
+    "Tổng quan": [page_dashboard],
+    "Nghiệp vụ": [page_project_view, page_project_create, page_project_detail]
+}
 
 try:
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
