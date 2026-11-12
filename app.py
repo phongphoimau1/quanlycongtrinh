@@ -2,55 +2,44 @@ import streamlit as st
 import os
 import traceback
 
-st.set_page_config(page_title="Quản lý công trình", layout="wide")
+st.set_page_config(page_title="Hệ thống Quản lý", layout="wide")
 
 try:
-    # 1. Khóa mục tiêu bằng đường dẫn tuyệt đối
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
     
-    # 2. Khai báo toàn bộ đường dẫn file
+    # --- ĐỊNH NGHĨA ĐƯỜNG DẪN FILE ---
     path_dashboard = os.path.join(BASE_DIR, "modules", "dashboard", "view.py")
     path_project_view = os.path.join(BASE_DIR, "modules", "projects", "view.py")
     path_project_create = os.path.join(BASE_DIR, "modules", "projects", "create.py")
     path_project_detail = os.path.join(BASE_DIR, "modules", "projects", "detail.py")
+    path_email_view = os.path.join(BASE_DIR, "modules", "emails", "view.py")
 
-    # 3. Khởi tạo các trang với url_path duy nhất
-    page_dashboard = st.Page(
-        path_dashboard, 
-        title="Dashboard", 
-        icon="📊", 
-        default=True, 
-        url_path="dashboard"
-    )
+    # --- KHỞI TẠO CÁC TRANG ---
+    page_dashboard = st.Page(path_dashboard, title="Dashboard", icon="📊", default=True, url_path="dashboard")
+    page_project_view = st.Page(path_project_view, title="Danh sách công trình", icon="🏗️", url_path="projects")
+    page_email_view = st.Page(path_email_view, title="Quản lý email", icon="📧", url_path="emails")
     
-    page_project_view = st.Page(
-        path_project_view, 
-        title="Quản lý công trình", 
-        icon="🏗️", 
-        url_path="projects"
-    )
-    
-    page_project_create = st.Page(
-        path_project_create, 
-        title="Tạo công trình", 
-        icon="➕", 
-        url_path="create-project"
-    )
+    # (Các trang tạo/chi tiết công trình vẫn được nạp để hệ thống router hoạt động, 
+    # nhưng sẽ được đặt vào một nhóm riêng để không làm rối menu chính)
+    page_project_create = st.Page(path_project_create, title="Tạo công trình", icon="➕", url_path="create-project")
+    page_project_detail = st.Page(path_project_detail, title="Chi tiết công trình", icon="🔎", url_path="project-detail")
 
-    page_project_detail = st.Page(
-        path_project_detail, 
-        title="Chi tiết công trình", 
-        icon="🔎", 
-        url_path="project-detail"
-    )
-
-    # 4. Gom nhóm menu hợp nhất
+    # --- XÂY DỰNG CẤU TRÚC MENU THEO THIẾT KẾ ---
     pages = {
-        "Tổng quan": [page_dashboard],
-        "Nghiệp vụ": [page_project_view, page_project_create, page_project_detail]
+        "TỔNG QUAN": [
+            page_dashboard
+        ],
+        "NGHIỆP VỤ": [
+            page_project_view,
+            page_email_view
+        ],
+        "CÁC TRANG CHỨC NĂNG (ẨN)": [
+            page_project_create,
+            page_project_detail
+        ]
     }
 
-    # 5. Kích hoạt điều hướng
+    # Kích hoạt điều hướng
     pg = st.navigation(pages)
     pg.run()
 
