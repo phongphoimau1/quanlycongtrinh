@@ -1,6 +1,5 @@
 import os
 import json
-import time
 import google.generativeai as genai
 from supabase import create_client, Client
 import streamlit as st
@@ -15,9 +14,6 @@ genai.configure(api_key=GEMINI_API_KEY)
 model = genai.GenerativeModel('gemini-3.8-flash')
 
 def process_email_with_ai(email_id: str, subject: str, sender: str, content: str = "") -> dict:
-    start_time = time.time()
-    print(f"\n[TELEMETRY] ⏱️ Bắt đầu xử lý email ID: {email_id} lúc {time.strftime('%H:%M:%S')}")
-    
     try:
         prompt = f"""
         Đọc tiêu đề email và trích xuất JSON:
@@ -35,10 +31,7 @@ def process_email_with_ai(email_id: str, subject: str, sender: str, content: str
         }}
         """
 
-        # BƯỚC 1: Đo lường thời gian gọi AI
-        t1 = time.time()
-        print("[TELEMETRY] 🤖 Đang gửi request tới Google Gemini...")
-        
+        # Gọi AI với cấu hình an toàn
         response = model.generate_content(
             prompt,
             generation_config=genai.GenerationConfig(
@@ -47,18 +40,14 @@ def process_email_with_ai(email_id: str, subject: str, sender: str, content: str
                 max_output_tokens=400
             )
         )
-        print(f"[TELEMETRY] ✅ Gemini phản hồi xong sau {time.time() - t1:.2f} giây.")
+        
+        if not response or not response.text:
+            return {"success": False, "message": "Google Gemini không trả về dữ liệu kết quả."}
 
-        # BƯỚC 2: Parse JSON
-        t2 = time.time()
         ai_data = json.loads(response.text)
         confidence = float(ai_data.pop("confidence_score", 0.5))
-        print(f"[TELEMETRY] ✅ Parse JSON xong sau {time.time() - t2:.2f} giây.")
 
-        # BƯỚC 3: Đo lường thời gian ghi Database Supabase
-        t3 = time.time()
-        print("[TELEMETRY] 💾 Đang ghi dữ liệu xuống Supabase...")
-        
+        # Ghi dữ liệu xuống Supabase
         supabase.table('ai_extractions').insert({
             "email_id": email_id, 
             "extracted_data": ai_data, 
@@ -75,9 +64,6 @@ def process_email_with_ai(email_id: str, subject: str, sender: str, content: str
         supabase.table('emails').update({
             "processing_status": "Chờ duyệt AI"
         }).eq("id", email_id).execute()
-        
-        print(f"[TELEMETRY] ✅ Ghi Supabase xong sau {time.time() - t3:.2f} giây.")
-        print(f"[TELEMETRY] 🚀 Tổng thời gian hoàn thành: {time.time() - start_time:.2f} giây.\n")
 
         return {
             "success": True, 
@@ -87,5 +73,6 @@ def process_email_with_ai(email_id: str, subject: str, sender: str, content: str
         }
 
     except Exception as e:
-        print(f"[TELEMETRY ERROR] ❌ Treo/Lỗi tại giây thứ {time.time() - start_time:.2f}: {str(e)}")
-        return {"success": False, "message": f"Lỗi hệ thống: {str(e)}"}
+        error_msg = f"Lỗi xử lý hệ thống: {str(e)}"
+        print(error_msg)
+        return {"success": False, "message": error_msg}
