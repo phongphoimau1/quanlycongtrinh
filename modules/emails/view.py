@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 from services.email_service import get_emails
+from modules.ai_processing.service import process_email_with_ai  # [ĐÃ SỬA] Đưa import lên đầu file
 
 st.title("📧 Quản lý Email Yêu Cầu")
 
@@ -26,7 +27,7 @@ with st.spinner("Đang đồng bộ dữ liệu..."):
 if data:
     df = pd.DataFrame(data)
     
-    # [NÂNG CẤP]: Dashboard Thống kê nhanh
+    # Dashboard Thống kê nhanh
     total_emails = len(df)
     pending_emails = len(df[df['processing_status'] == 'Chưa xử lý'])
     
@@ -35,7 +36,7 @@ if data:
     m2.metric("Chưa xử lý (Cần duyệt)", pending_emails, delta="- Cần làm ngay" if pending_emails > 0 else "Hoàn tất", delta_color="inverse")
     st.divider()
 
-    # Chuẩn hóa dữ liệu hiển thị (GIỮ LẠI CỘT ID ĐỂ XỬ LÝ LOGIC NGẦM)
+    # Chuẩn hóa dữ liệu hiển thị
     df = df.rename(columns={
         "id": "ID", 
         "sender_email": "Người gửi",
@@ -55,7 +56,6 @@ if data:
     st.markdown("### 📋 Danh sách Yêu cầu")
     
     # --- 3. BẢNG DỮ LIỆU TƯƠNG TÁC (Tích hợp Selection) ---
-    # Sử dụng on_select="rerun" để bắt sự kiện click của người dùng (Streamlit >= 1.35)
     event = st.dataframe(
         df[["Người gửi", "Tiêu đề", "Phân loại", "Trạng thái", "Ngày nhận"]],
         use_container_width=True,
@@ -70,36 +70,21 @@ if data:
         selected_index = selected_rows[0]
         selected_email = df.iloc[selected_index]
         
-        with st.expander(f"⚙️ Khu vực xử lý: {selected_email['Tiêu đề']}", expanded=True):
-            st.info(f"**Người gửi:** {selected_email['Người gửi']} | **Ngày nhận:** {selected_email['Ngày nhận']}")
-            
-            if selected_email['Trạng thái'] == 'Chưa xử lý':
-                if st.button("🚀 Chuyển hóa thành Dự Án Mới", type="primary", use_container_width=True):
-                    # KẾT NỐI NGHIỆP VỤ Ở ĐÂY
-                    st.success("Đang gọi hàm tạo dự án mới... (Sẽ kết nối vào modules/projects)")
-                    # TODO: Gọi hàm create_project(selected_email)
-            else:
-                st.success("✅ Email này đã được đưa vào luồng dự án.")
-        # Khu vực import (thêm lên đầu file view.py)
-        # from modules.ai_processing.service import process_email_with_ai
-
-        # ... (code UI phía trên) ...
-
+        # [ĐÃ SỬA] Gom lại thành 1 khối Expander duy nhất, gọn gàng và logic
         with st.expander(f"⚙️ Khu vực xử lý: {selected_email['Tiêu đề']}", expanded=True):
             st.info(f"**Người gửi:** {selected_email['Người gửi']} | **Ngày nhận:** {selected_email['Ngày nhận']}")
             
             if selected_email['Trạng thái'] == 'Chưa xử lý':
                 st.warning("⚠️ Email này chưa được phân tích. Hãy để AI đọc và trích xuất dữ liệu tự động.")
                 
-                # NÚT BẤM KÍCH HOẠT AI
                 if st.button("✨ Phân tích bằng Trí tuệ Nhân tạo", type="primary", use_container_width=True):
                     with st.spinner("🤖 AI đang đọc và phân tích email..."):
-                        # Gọi hàm Service
+                        # Kích hoạt Siêu não Gemini
                         result = process_email_with_ai(
-                            email_id=selected_email['ID'], # Cần truyền ID gốc của bảng emails
+                            email_id=selected_email['ID'],
                             subject=selected_email['Tiêu đề'],
                             sender=selected_email['Người gửi'],
-                            content="" # Tương lai nếu lấy được body của email thì truyền vào đây
+                            content="" # Sẵn sàng cho nâng cấp lấy body email sau này
                         )
                         
                         if result["success"]:
@@ -107,7 +92,6 @@ if data:
                             st.json(result["data"])
                             st.info("👉 Dữ liệu đã được chuyển sang tab 'Chờ xác nhận'.")
                             
-                            # Xóa cache và tải lại bảng để cập nhật trạng thái
                             st.cache_data.clear()
                             st.rerun()
                         else:
@@ -115,6 +99,10 @@ if data:
             
             elif selected_email['Trạng thái'] == 'Chờ duyệt AI':
                 st.success("🤖 AI đã xử lý email này. Vui lòng chuyển sang menu 'Chờ xác nhận' để duyệt tạo dự án.")
+            
+            else:
+                # Bắt các trạng thái khác (Đã xử lý, Đã hủy...)
+                st.success(f"✅ Email đang ở trạng thái: {selected_email['Trạng thái']}")
 
 else:
     st.info("📭 Hộp thư trống hoặc không tìm thấy kết quả phù hợp.")
