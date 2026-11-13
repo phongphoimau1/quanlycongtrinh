@@ -7,7 +7,7 @@ supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 def format_to_iso_date(date_input):
     """
-    Chuyển đổi chuỗi ngày tháng DD/MM/YYYY hoặc DD/MM/YYYY HH:MM 
+    Chuyển đổi chuỗi ngày tháng từ định dạng DD/MM/YYYY hoặc DD/MM/YYYY HH:MM 
     sang chuẩn ISO (YYYY-MM-DD hoặc YYYY-MM-DD HH:MM:SS) để chống lỗi 22008.
     """
     if not date_input:
@@ -36,7 +36,7 @@ def format_to_iso_date(date_input):
         except ValueError:
             continue
             
-    return None # Trả về None nếu không match để tránh sập bảng
+    return None # Trả về None nếu không match định dạng để tránh sập app
 def map_staff_name_to_uuid(staff_name):
     """
     Ánh xạ tên nhân sự cứng sang UUID giả định cố định hoặc chuẩn tương ứng 
@@ -76,19 +76,19 @@ def create_project_directly_from_email(
         # Chuyển tên nhân sự thành UUID hợp lệ để không bị lỗi 22P02
         valid_assigned_to = map_staff_name_to_uuid(assigned_to_uuid)
 
+        # Payload dữ liệu dự án đã được làm sạch chuẩn ISO (chống lỗi 22008)
         project_payload = {
             "organization_id": org_id,
             "project_code": project_code if project_code else None,
             "project_name": project_name,
             "customer_name": customer_name,
             "category_id": category_id if category_id else None,
-            "assigned_to": valid_assigned_to,  # <-- Đã là UUID hợp lệ, chống lỗi 22P02 tuyệt đối
-            "received_date": received_date,
-            "completed_date": due_date,
+            "assigned_to": valid_assigned_to,  # UUID nhân sự đã ánh xạ từ bước trước
+            "received_date": format_to_iso_date(received_date),  # <-- Chuẩn hóa ngày nhận
+            "completed_date": format_to_iso_date(due_date),        # <-- Chuẩn hóa ngày hoàn thành
             "status": status,
             "request_content": request_content
-        }
-               
+        }               
         # 3. Insert vào bảng projects
         proj_res = supabase.table('projects').insert(project_payload).execute()
         if not proj_res.data:
