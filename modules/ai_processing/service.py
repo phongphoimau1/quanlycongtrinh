@@ -13,8 +13,25 @@ GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"] # Thêm key này vào secrets củ
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 genai.configure(api_key=GEMINI_API_KEY)
 
-# Dùng model Flash cho tốc độ siêu tốc và hỗ trợ JSON mode
-model = genai.GenerativeModel('gemini-1.5-flash') 
+# --- BẮT ĐẦU NÂNG CẤP RADAR TỰ ĐỘNG DÒ MODEL ---
+# Thử dùng phiên bản mới nhất có hậu tố -latest
+target_model = 'gemini-1.5-flash-latest'
+
+try:
+    # Nếu hệ thống vẫn kén chọn, chúng ta quét toàn bộ kho vũ khí của Google
+    available_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
+    flash_models = [m for m in available_models if '1.5-flash' in m]
+    if flash_models:
+        target_model = flash_models[0] # Lấy chính xác cái tên mà Google cho phép
+    elif available_models:
+        # Nếu tài khoản không có flash, lùi về dùng bản pro
+        target_model = available_models[-1]
+except Exception as e:
+    print("Không thể quét danh sách model, dùng mặc định:", e)
+
+print(f"🚀 Hệ thống đã chốt khóa mục tiêu vào: {target_model}")
+model = genai.GenerativeModel(target_model)
+# --- KẾT THÚC NÂNG CẤP ---
 
 def process_email_with_ai(email_id: str, subject: str, sender: str, content: str = "") -> dict:
     """
