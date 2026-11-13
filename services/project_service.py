@@ -1,10 +1,46 @@
 import streamlit as st
 from supabase import create_client, Client
-
+from datetime import datetime
 SUPABASE_URL = st.secrets["SUPABASE_URL"]
 SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
+def format_to_iso_date(date_input):
+    """
+    Chuyển đổi chuỗi ngày tháng từ định dạng DD/MM/YYYY hoặc DD/MM/YYYY HH:MM 
+    sang chuẩn ISO (YYYY-MM-DD hoặc YYYY-MM-DD HH:MM:SS) để lưu vào Supabase.
+    """
+    if not date_input:
+        return None
+    
+    # Nếu đã là đối tượng datetime, convert sang chuỗi ISO
+    if isinstance(date_input, datetime):
+        return date_input.strftime('%Y-%m-%d %H:%M:%S')
+        
+    date_str = str(date_input).strip()
+    
+    # Thử parse các định dạng phổ biến
+    formats_to_try = [
+        '%d/%m/%Y %H:%M',
+        '%d/%m/%Y %H:%M:%S',
+        '%d/%m/%Y',
+        '%Y-%m-%d %H:%M:%S',
+        '%Y-%m-%d'
+    ]
+    
+    for fmt in formats_to_try:
+        try:
+            dt = datetime.strptime(date_str, fmt)
+            # Trả về chuẩn ISO tùy theo có giờ phút hay không
+            if '%H' in fmt:
+                return dt.strftime('%Y-%m-%d %H:%M:%S')
+            else:
+                return dt.strftime('%Y-%m-%d')
+        except ValueError:
+            continue
+            
+    # Nếu không match định dạng nào, trả về nguyên bản hoặc chuỗi rỗng để tránh sập app
+    return date_str
 def get_all_projects():
     """Lấy toàn bộ danh sách công trình từ bảng projects trên Supabase"""
     try:
