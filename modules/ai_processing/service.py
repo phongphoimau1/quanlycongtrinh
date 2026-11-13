@@ -1,10 +1,42 @@
 import streamlit as st
 from supabase import create_client, Client
-
+from datetime import datetime
 SUPABASE_URL = st.secrets["SUPABASE_URL"]
 SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
+def format_to_iso_date(date_input):
+    """
+    Chuyển đổi chuỗi ngày tháng DD/MM/YYYY hoặc DD/MM/YYYY HH:MM 
+    sang chuẩn ISO (YYYY-MM-DD hoặc YYYY-MM-DD HH:MM:SS) để chống lỗi 22008.
+    """
+    if not date_input:
+        return None
+    
+    if isinstance(date_input, datetime):
+        return date_input.strftime('%Y-%m-%d %H:%M:%S')
+        
+    date_str = str(date_input).strip()
+    
+    formats_to_try = [
+        '%d/%m/%Y %H:%M',
+        '%d/%m/%Y %H:%M:%S',
+        '%d/%m/%Y',
+        '%Y-%m-%d %H:%M:%S',
+        '%Y-%m-%d'
+    ]
+    
+    for fmt in formats_to_try:
+        try:
+            dt = datetime.strptime(date_str, fmt)
+            if '%H' in fmt:
+                return dt.strftime('%Y-%m-%d %H:%M:%S')
+            else:
+                return dt.strftime('%Y-%m-%d')
+        except ValueError:
+            continue
+            
+    return None # Trả về None nếu không match để tránh sập bảng
 def create_project_directly_from_email(
     email_id, 
     customer_name, 
