@@ -97,6 +97,35 @@ def get_dashboard_stats():
 
     except Exception as e:
         raise Exception(f"Lỗi database khi cập nhật trạng thái: {str(e)}")
+def create_project(project_data: dict):
+    """
+    Tạo mới một công trình thủ công từ giao diện Quản lý Công trình.
+    project_data bao gồm: project_code, project_name, customer_name, brand, category_id, assigned_to, status, request_content, v.v.
+    """
+    try:
+        # Lấy mặc định organization_id đầu tiên nếu chưa có
+        if "organization_id" not in project_data or not project_data["organization_id"]:
+            org_res = supabase.table('organizations').select('id').limit(1).execute()
+            if org_res.data:
+                project_data["organization_id"] = org_res.data[0]['id']
+
+        # Thực hiện insert vào bảng projects
+        res = supabase.table('projects').insert(project_data).execute()
+        
+        if res.data and len(res.data) > 0:
+            return {
+                "success": True, 
+                "message": "Tạo công trình thành công!", 
+                "data": res.data[0]
+            }
+        else:
+            raise Exception("Không thể chèn dữ liệu vào bảng projects.")
+
+    except Exception as e:
+        return {
+            "success": False, 
+            "message": f"Lỗi database khi tạo công trình: {str(e)}"
+        }
 def update_project_status(project_id: str, new_status: str):
     """
     Cập nhật trạng thái công trình theo đúng ID (UUID) chuẩn của bảng projects
