@@ -97,3 +97,39 @@ def get_dashboard_stats():
 
     except Exception as e:
         raise Exception(f"Lỗi database khi cập nhật trạng thái: {str(e)}")
+def update_project_status(project_id: str, new_status: str):
+    """
+    Cập nhật trạng thái công trình theo đúng ID (UUID) chuẩn của bảng projects
+    và ghi nhận lịch sử vào bảng project_status_history.
+    """
+    try:
+        if not project_id:
+            raise Exception("Thiếu định danh project_id hợp lệ để cập nhật.")
+
+        # 1. Lấy trạng thái cũ để ghi log lịch sử
+        old_res = supabase.table('projects').select('status').eq('id', project_id).execute()
+        old_status = old_res.data[0].get('status', 'Mới tiếp nhận') if old_res.data else "Mới tiếp nhận"
+
+        # 2. Thực hiện lệnh UPDATE trực tiếp vào bảng 'projects'
+        update_res = supabase.table('projects').update({
+            "status": new_status
+        }).eq('id', project_id).execute()
+
+        if not update_res.data:
+            raise Exception("Supabase từ chối cập nhật. Vui lòng kiểm tra quyền RLS trên bảng projects.")
+
+        # 3. Ghi log lịch sử thay đổi trạng thái
+        try:
+            supabase.table('project_status_history').insert({
+                "project_id": project_id,
+                "old_status": old_status,
+                "new_status": new_status,
+                "note": f"Cập nhật trạng thái từ '{old_status}' sang '{new_status}'"
+            }).execute()
+        except Exception as history_err:
+            print(f"Cảnh báo ghi log lịch sử: {history_err}")
+
+        return True
+
+    except Exception as e:
+        raise Exception(f"Lỗi database khi cập nhật trạng thái: {str(e)}")
