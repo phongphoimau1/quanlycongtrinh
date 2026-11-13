@@ -114,3 +114,35 @@ def create_project_directly_from_email(
             print("Debug Update Email Status:", update_mail_res)
     except Exception as e:
         return {"success": False, "message": f"Lỗi hệ thống database: {str(e)}"}
+def create_project_directly_from_email(email_id, project_data):
+    try:
+        # 1. Tạo công trình trong bảng projects
+        proj_res = supabase.table('projects').insert(project_data).execute()
+        if not proj_res.data:
+            raise Exception("Không thể tạo dự án trong bảng projects.")
+        
+        new_project_id = proj_res.data[0]['id']
+
+        # 2. Ép buộc ghi nhận liên kết vào bảng 'project_emails' (Dùng upsert để tránh trùng lặp)
+        if email_id:
+            try:
+                supabase.table('project_emails').upsert({
+                    "project_id": new_project_id,
+                    "email_id": email_id,
+                    "relation_type": "source",
+                    "is_confirmed": True
+                }, on_conflict="project_id,email_id").execute()
+            except Exception as e:
+                print(f"Lỗi ghi project_emails: {e}")
+
+            # 3. Cập nhật trực tiếp trạng thái trong bảng 'emails' thành "Đã giao"
+            try:
+                supabase.table('emails').update({
+                    "processing_status": "Đã giao"
+                }).eq("id", email_id).execute()
+            except Exception as e:
+                print(f"Lỗi update status email: {e}")
+
+        return True, "Khởi tạo công trình và cập nhật trạng thái email thành công!"
+    except Exception as e:
+        return False, str(e)
