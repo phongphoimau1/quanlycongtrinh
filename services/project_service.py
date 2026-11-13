@@ -55,40 +55,45 @@ def get_dashboard_stats():
             "status_counts": {},
             "projects": []
         }
-def update_project_status(project_id: str, new_status: str):
+def get_dashboard_stats():
     """
-    Cập nhật trạng thái công trình theo đúng ID (UUID) chuẩn của bảng projects
-    và ghi nhận lịch sử vào project_status_history.
+    Thống kê tổng quan cho Dashboard, chuẩn hóa tuyệt đối các trạng thái tiến độ
+    để không bị lệch số liệu giữa thẻ Metric và Biểu đồ.
     """
     try:
-        if not project_id:
-            raise Exception("Thiếu định danh project_id hợp lệ để cập nhật.")
-
-        # 1. Lấy trạng thái cũ để ghi log lịch sử
-        old_res = supabase.table('projects').select('status').eq('id', project_id).execute()
-        old_status = old_res.data[0].get('status', 'Mới tiếp nhận') if old_res.data else "Mới tiếp nhận"
-
-        # 2. Thực hiện lệnh UPDATE trực tiếp và yêu cầu trả về dữ liệu sau khi update (.execute())
-        update_res = supabase.table('projects').update({
-            "status": new_status
-        }).eq('id', project_id).execute()
-
-        # Kiểm tra nếu Supabase trả về dữ liệu trống (thường do RLS chặn hoặc sai ID)
-        if not update_res.data:
-            raise Exception("Supabase từ chối cập nhật. Có thể do chính sách RLS chặn quyền UPDATE trên bảng projects.")
-
-        # 3. Ghi log lịch sử thay đổi trạng thái
-        try:
-            supabase.table('project_status_history').insert({
-                "project_id": project_id,
-                "old_status": old_status,
-                "new_status": new_status,
-                "note": f"Cập nhật trạng thái từ '{old_status}' sang '{new_status}'"
-            }).execute()
-        except Exception as history_err:
-            print(f"Không thể ghi log lịch sử: {history_err}")
-
-        return True
+        res = supabase.table('projects').select('*').execute()
+        projects = res.data if res.data else []
+        
+        total_projects = len(projects)
+        
+        status_counts = {}
+        for p in projects:
+            raw_status = p.get('status')
+            # Chuẩn hóa trạng thái: loại bỏ khoảng trắng thừa, mặc định là 'Mới tiếp nhận' nếu trống
+            status = raw_status.strip() if raw_status else 'Mới tiếp nhận'
+            
+            # Gom nhóm chuẩn hóa tiếng Việt nếu cần thiết
+            if status.lower() in ['dang thuc hien', 'đang thực hiện', 'in progress']:
+                status = 'Đang thực hiện'
+            elif status.lower() in ['da hoan thanh', 'đã hoàn thành', 'completed']:
+                status = 'Đã hoàn thành'
+            elif status.lower() in ['moi tiep nhan', 'mới tiếp nhận', 'pending']:
+                status = 'Mới tiếp nhận'
+                
+            status_counts[status] = status_counts.get(status, 0) + 1
+            
+        return {
+            "total": total_projects,
+            "status_counts": status_counts,
+            "projects": projects
+        }
+    except Exception as e:
+        print(f"Lỗi truy vấn thống kê Dashboard: {e}")
+        return {
+            "total": 0,
+            "status_counts": {},
+            "projects": []
+        }
 
     except Exception as e:
         raise Exception(f"Lỗi database khi cập nhật trạng thái: {str(e)}")
