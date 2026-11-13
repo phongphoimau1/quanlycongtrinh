@@ -19,9 +19,11 @@ def create_project_directly_from_email(
     assigned_to: str
 ) -> dict:
     """
-    Khởi tạo dự án trực tiếp, lưu thông tin chi tiết kèm ngày đến hạn và nhân viên phụ trách.
+    1. Khởi tạo bản ghi mới vào bảng 'projects' (để hiển thị lên danh sách công trình & dashboard).
+    2. Cập nhật trạng thái email gốc thành 'Đã tạo dự án' (đổi trạng thái/màu sắc).
     """
     try:
+        # 1. Payload đẩy vào bảng công trình chính
         project_payload = {
             "customer_name": customer_name,
             "customer_phone": customer_phone,
@@ -30,28 +32,22 @@ def create_project_directly_from_email(
             "detailed_requirements": requirements,
             "received_date": received_date,
             "due_date": due_date,
-            "assigned_to": assigned_to
+            "assigned_to": assigned_to,
+            "status": "Đang thực hiện", # Trạng thái mặc định khi công trình được tạo
+            "email_id": email_id # Liên kết ngược về email nguồn
         }
 
-        # 1. Ghi nhận dữ liệu trích xuất/dự án (Bỏ qua bảng phụ nếu schema chưa khớp)
-        try:
-            supabase.table('ai_extractions').insert({
-                "email_id": email_id, 
-                "extracted_data": project_payload, 
-                "confidence": 1.0, 
-                "decision": "approved"
-            }).execute()
-        except Exception:
-            pass
+        # Thực thi thêm mới vào bảng 'projects' trên Supabase
+        res_project = supabase.table('projects').insert(project_payload).execute()
 
-        # 2. Cập nhật trạng thái email gốc thành 'Đã tạo dự án'
+        # 2. Cập nhật trạng thái email gốc thành "Đã tạo dự án" để đổi màu/trạng thái trên UI
         supabase.table('emails').update({
             "processing_status": "Đã tạo dự án"
         }).eq("id", email_id).execute()
 
         return {
             "success": True, 
-            "message": f"🚀 Đã khởi tạo dự án thành công và phân công cho [{assigned_to}]!", 
+            "message": f"🚀 Đã khởi tạo công trình thành công cho khách hàng [{customer_name}] và phân công cho [{assigned_to}]!", 
             "data": project_payload
         }
 
