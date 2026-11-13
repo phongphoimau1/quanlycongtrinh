@@ -10,8 +10,6 @@ SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
 GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
-
-# Khởi tạo client chuẩn SDK mới
 client = genai.Client(api_key=GEMINI_API_KEY)
 
 def process_email_with_ai(email_id: str, subject: str, sender: str, content: str = "") -> dict:
@@ -32,9 +30,9 @@ def process_email_with_ai(email_id: str, subject: str, sender: str, content: str
         }}
         """
 
-        # ⚡ Chuyển sang model gemini-2.5-flash (hoặc gemini-2.0-flash) để tránh 404 và làm mới hạn mức
+        # Model chuẩn duy nhất được Google cho phép trên Free Tier hiện tại
         response = client.models.generate_content(
-            model='gemini-2.5-flash',
+            model='gemini-3.8-flash',
             contents=prompt,
             config=types.GenerateContentConfig(
                 response_mime_type="application/json",
@@ -75,6 +73,11 @@ def process_email_with_ai(email_id: str, subject: str, sender: str, content: str
         }
 
     except Exception as e:
-        error_msg = f"Lỗi hệ thống GenAI: {str(e)}"
+        err_str = str(e)
+        if "429" in err_str or "RESOURCE_EXHAUSTED" in err_str:
+            error_msg = "⚠️ Đã vượt quá hạn mức miễn phí (20 lần/ngày) của model gemini-3.8-flash. Vui lòng tạo API Key mới trên Google AI Studio hoặc chờ reset sau vài giờ."
+        else:
+            error_msg = f"Lỗi hệ thống GenAI: {err_str}"
+            
         print(error_msg)
         return {"success": False, "message": error_msg}
