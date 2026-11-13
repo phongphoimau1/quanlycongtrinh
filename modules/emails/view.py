@@ -15,7 +15,24 @@ with col2:
     if st.button("🔄 Làm mới", width='stretch'):
         st.cache_data.clear()
         st.rerun()
+# Tô màu trực quan cho cột Trạng thái trên bảng danh sách email
+    def highlight_status(val):
+        if val == 'Đã tạo dự án':
+            return 'background-color: #d4edda; color: #155724;' # Xanh lá nhẹ
+        elif val == 'Chưa xử lý':
+            return 'background-color: #fff3cd; color: #856404;' # Vàng nhẹ
+        return ''
 
+    # Hiển thị dataframe với định dạng màu sắc chuyên nghiệp
+    st.dataframe(
+        df[["Người gửi", "Tiêu đề", "Phân loại", "Trạng thái", "Ngày nhận"]].style.applymap(
+            highlight_status, subset=['Trạng thái']
+        ),
+        width='stretch',
+        hide_index=True,
+        selection_mode="single-row",
+        on_select="rerun"
+    )
 # --- 2. TẢI VÀ XỬ LÝ DỮ LIỆU ---
 with st.spinner("Đang đồng bộ dữ liệu..."):
     try:
