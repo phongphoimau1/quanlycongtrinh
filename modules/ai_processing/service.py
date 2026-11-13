@@ -66,9 +66,9 @@ def create_project_directly_from_email(
             "project_name": project_name,
             "customer_name": customer_name,
             "category_id": category_id if category_id else None,
-            "assigned_to": assigned_to_uuid if assigned_to_uuid else None,
-            "received_date": format_to_iso_date(received_date),  # <-- Đã được làm sạch chống lỗi 22008
-            "completed_date": format_to_iso_date(due_date),        # <-- Đã được làm sạch chuẩn ISO
+            "assigned_to": assigned_to_value,  # Lưu trực tiếp tên nhân viên ("Ms Hân", "Mr Thái",...) vào CSDL
+            "received_date": format_to_iso_date(received_date),
+            "completed_date": format_to_iso_date(due_date),
             "status": status,
             "request_content": request_content
         }
