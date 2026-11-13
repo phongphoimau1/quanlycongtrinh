@@ -78,11 +78,10 @@ if data:
                 st.warning("⚠️ Email này chưa được phân tích. Hãy để AI đọc và trích xuất dữ liệu tự động.")
                 
                 if st.button("✨ Phân tích bằng Trí tuệ Nhân tạo", type="primary", width='stretch'):
-                    # Dùng st.status thay vì st.spinner để hiển thị tiến trình minh bạch không bị kẹt
-                    with st.status("🤖 Đang kết nối AI...", expanded=True) as status:
-                        st.write("Đang gửi yêu cầu đến Google Gemini...")
+                    with st.status("🤖 Đang xử lý...", expanded=True) as status:
+                        st.write("Đang kết nối Google Gemini...")
                         
-                        # Gọi Service
+                        # Gọi hàm dịch vụ AI
                         result = process_email_with_ai(
                             email_id=selected_email['ID'],
                             subject=selected_email['Tiêu đề'],
@@ -91,14 +90,17 @@ if data:
                         )
                         
                         if result["success"]:
-                            status.update(label="✅ Phân tích hoàn tất!", state="complete", expanded=False)
+                            status.update(label="✅ Thành công!", state="complete", expanded=False)
                             st.success(result["message"])
+                            
+                            # Hiển thị trực tiếp dữ liệu JSON vừa bóc tách ra màn hình
                             st.json(result["data"])
-                            st.info("👉 Dữ liệu đã chuyển sang tab 'Chờ xác nhận'.")
-                            st.cache_data.clear()
+                            st.info(f"Độ tự tin (Confidence): {result['confidence'] * 100}%")
+                            
+                            # ⚡ CỰC KỲ QUAN TRỌNG: Ép Streamlit làm mới app để cập nhật trạng thái
                             st.rerun()
                         else:
-                            status.update(label="❌ Xử lý thất bại!", state="error", expanded=True)
+                            status.update(label="❌ Thất bại!", state="error", expanded=True)
                             st.error(result["message"])
             
             elif selected_email['Trạng thái'] == 'Chờ duyệt AI':
