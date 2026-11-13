@@ -73,20 +73,22 @@ def create_project_directly_from_email(
         org_res = supabase.table('organizations').select('id').limit(1).execute()
         org_id = org_res.data[0]['id'] if org_res.data else None
 
-        # 2. Payload dữ liệu dự án
+        # Chuyển tên nhân sự thành UUID hợp lệ để không bị lỗi 22P02
+        valid_assigned_to = map_staff_name_to_uuid(assigned_to_uuid)
+
         project_payload = {
             "organization_id": org_id,
             "project_code": project_code if project_code else None,
             "project_name": project_name,
             "customer_name": customer_name,
             "category_id": category_id if category_id else None,
-            "assigned_to": assigned_to_uuid,  # Lưu trực tiếp tên nhân sự vào cột assigned_to
+            "assigned_to": valid_assigned_to,  # <-- Đã là UUID hợp lệ, chống lỗi 22P02 tuyệt đối
             "received_date": received_date,
             "completed_date": due_date,
             "status": status,
             "request_content": request_content
         }
-        
+               
         # 3. Insert vào bảng projects
         proj_res = supabase.table('projects').insert(project_payload).execute()
         if not proj_res.data:
