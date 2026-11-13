@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 from services.email_service import get_emails
-from modules.ai_processing.service import create_project_directly_from_email  # [ĐÃ SỬA] Đưa import lên đầu file
+from modules.ai_processing.service import create_project_directly_from_email  # [ĐÃ SỬA] Hàm Enterprise trực tiếp
 
 st.title("📧 Quản lý Email Yêu Cầu")
 
@@ -12,7 +12,7 @@ with col1:
 with col2:
     st.write("") # Căn chỉnh layout cho nút bấm ngang hàng với ô tìm kiếm
     st.write("")
-    if st.button("🔄 Làm mới", use_container_width=True):
+    if st.button("🔄 Làm mới", width='stretch'):
         st.cache_data.clear() # Xóa cache để ép tải lại dữ liệu mới nhất
         st.rerun()
 
@@ -55,10 +55,10 @@ if data:
 
     st.markdown("### 📋 Danh sách Yêu cầu")
     
-    # --- 3. BẢNG DỮ LIỆU TƯƠNG TÁC (Tích hợp Selection) ---
+    # --- 3. BẢNG DỮ LIỆU TƯƠNG TÁC (Tích hợp Selection & Chuẩn hóa width='stretch') ---
     event = st.dataframe(
         df[["Người gửi", "Tiêu đề", "Phân loại", "Trạng thái", "Ngày nhận"]],
-        use_container_width=True,
+        width='stretch',
         hide_index=True,
         selection_mode="single-row",
         on_select="rerun"
@@ -70,45 +70,41 @@ if data:
         selected_index = selected_rows[0]
         selected_email = df.iloc[selected_index]
         
-        # [ĐÃ SỬA] Gom lại thành 1 khối Expander duy nhất, gọn gàng và logic
         with st.expander(f"⚙️ Khu vực xử lý: {selected_email['Tiêu đề']}", expanded=True):
             st.info(f"**Người gửi:** {selected_email['Người gửi']} | **Ngày nhận:** {selected_email['Ngày nhận']}")
             
-            if selected_email['Trạng thái'] == 'Chưa xử lý':
-                st.warning("⚠️ Email này chưa được phân tích. Hãy để AI đọc và trích xuất dữ liệu tự động.")
+            # --- ENTERPRISE FAST FORM DISPATCHER ---
+            st.markdown("#### ⚡ Giao nhiệm vụ & Khởi tạo Dự án trực tiếp")
+            st.write("Xử lý nhanh chóng không độ trễ, không phụ thuộc AI bên ngoài:")
+            
+            with st.form(f"project_form_{selected_email['ID']}"):
+                cust_name = st.text_input("Tên khách hàng", value="")
+                cust_phone = st.text_input("Số điện thoại liên hệ", value="")
+                proj_address = st.text_input("Địa chỉ công trình", value="")
+                proj_type = st.selectbox("Phân loại dự án", ["Nhà phố", "Biệt thự", "Quán Cafe", "Nhà ống", "Chưa rõ"])
+                requirements = st.text_area("Yêu cầu chi tiết từ email", value=selected_email['Tiêu đề'])
                 
-                if st.button("✨ Phân tích bằng Trí tuệ Nhân tạo", type="primary", width='stretch'):
-                    with st.status("🤖 Đang xử lý...", expanded=True) as status:
-                        st.write("Đang kết nối Google Gemini...")
-                        
-                        # Gọi hàm dịch vụ AI
-                        result = process_email_with_ai(
+                submitted = st.form_submit_button("🚀 Xác nhận & Tạo Dự án Ngay", type="primary", width='stretch')
+                
+                if submitted:
+                    if not cust_name or not proj_address:
+                        st.warning("⚠️ Vui lòng nhập đầy đủ Tên khách hàng và Địa chỉ công trình!")
+                    else:
+                        result = create_project_directly_from_email(
                             email_id=selected_email['ID'],
-                            subject=selected_email['Tiêu đề'],
-                            sender=selected_email['Người gửi'],
-                            content=""
+                            customer_name=cust_name,
+                            customer_phone=cust_phone,
+                            project_address=proj_address,
+                            project_type=proj_type,
+                            requirements=requirements
                         )
                         
                         if result["success"]:
-                            status.update(label="✅ Thành công!", state="complete", expanded=False)
                             st.success(result["message"])
-                            
-                            # Hiển thị trực tiếp dữ liệu JSON vừa bóc tách ra màn hình
-                            st.json(result["data"])
-                            st.info(f"Độ tự tin (Confidence): {result['confidence'] * 100}%")
-                            
-                            # ⚡ CỰC KỲ QUAN TRỌNG: Ép Streamlit làm mới app để cập nhật trạng thái
+                            st.balloons()
+                            st.cache_data.clear()
                             st.rerun()
                         else:
-                            status.update(label="❌ Thất bại!", state="error", expanded=True)
                             st.error(result["message"])
-            
-            elif selected_email['Trạng thái'] == 'Chờ duyệt AI':
-                st.success("🤖 AI đã xử lý email này. Vui lòng chuyển sang menu 'Chờ xác nhận' để duyệt tạo dự án.")
-            
-            else:
-                # Bắt các trạng thái khác (Đã xử lý, Đã hủy...)
-                st.success(f"✅ Email đang ở trạng thái: {selected_email['Trạng thái']}")
-
 else:
     st.info("📭 Hộp thư trống hoặc không tìm thấy kết quả phù hợp.")
