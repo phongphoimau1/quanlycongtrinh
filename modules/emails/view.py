@@ -78,17 +78,34 @@ if data:
     )
 
     # --- 3. KHU VỰC THAO TÁC KHI CLICK ---
+    # --- 3. KHU VỰC THAO TÁC KHI CLICK ---
     selected_rows = event.selection.rows
     if selected_rows:
         selected_index = selected_rows[0]
         selected_email = df.iloc[selected_index]
         
         with st.expander(f"⚙️ Khu vực xử lý: {selected_email['Tiêu đề']}", expanded=True):
-            st.info(f"**Người gửi:** {selected_email['Người gửi']} | **Ngày nhận:** {selected_email['Ngày nhận']}")
+            st.info(f"**Người gửi:** {selected_email['Người gửi']} | **Ngày nhận:** {selected_email['Ngày nhận']} | **Trạng thái hiện tại:** `{selected_email['Trạng thái']}`")
             
+            col_act1, col_act2 = st.columns([3, 1])
+            with col_act2:
+                # NÚT XÁC NHẬN THỦ CÔNG: Đánh dấu đã giao ngay lập tức mà không cần tạo project rườm rà
+                if selected_email['Trạng thái'] != 'Đã giao':
+                    if st.button("✅ Đánh dấu Đã giao", type="secondary", width='stretch'):
+                        try:
+                            res_update = supabase.table('emails').update({
+                                "processing_status": "Đã giao"
+                            }).eq("id", selected_email['ID']).execute()
+                            
+                            st.success("🎉 Đã cập nhật trạng thái email thành 'Đã giao'!")
+                            st.cache_data.clear()
+                            st.rerun()
+                        except Exception as err:
+                            st.error(f"❌ Lỗi cập nhật: {err}")
+
             # Kiểm tra nếu đã giao rồi thì cảnh báo
             if selected_email['Trạng thái'] == 'Đã giao':
-                st.success("✅ Email này đã được bàn giao và tạo công trình trên hệ thống. Không thể giao trùng.")
+                st.success("✅ Email này đã được xử lý / bàn giao trên hệ thống.")
             else:
                 st.markdown("#### ⚡ Giao nhiệm vụ & Khởi tạo Dự án")
                 
