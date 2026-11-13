@@ -24,54 +24,38 @@ def get_project_by_code(project_code: str):
         st.error(f"Lỗi truy vấn CSDL: {e}")
     return None
 
-def update_project_status(identifier: str, new_status: str):
+def update_project_status(project_id: str, new_status: str):
     """
-    Cập nhật trạng thái công trình. 
-    Hỗ trợ nhận diện linh hoạt identifier là ID (uuid) hoặc project_code (chuỗi).
+    Cập nhật trạng thái công trình theo đúng ID (UUID) chuẩn của bảng projects
+    và ghi nhận lịch sử vào project_status_history.
     """
     try:
-        # 1. Xác định xem identifier là UUID (id) hay Project Code (ví dụ: PRJ-...)
-        # Nếu độ dài ngắn hoặc không có dấu gạch ngang theo chuẩn uuid, ta thử tìm theo project_code trước
-        project_record = None
-        
-        # Thử tìm trực tiếp theo id (nếu đúng định dạng uuid)
-        try:
-            res = supabase.table('projects').select('id, status, project_code').eq('id', identifier).execute()
-            if res.data and len(res.data) > 0:
-                project_record = res.data[0]
-        except Exception:
-            pass
+        if not project_id:
+            raise Exception("Thiếu định danh project_id hợp lệ để cập nhật.")
 
-        # Nếu chưa thấy, tìm theo project_code
-        if not project_record:
-            res = supabase.table('projects').select('id, status, project_code').eq('project_code', identifier).execute()
-            if res.data and len(res.data) > 0:
-                project_record = res.data[0]
+        # 1. Lấy trạng thái cũ để ghi log lịch sử
+        old_res = supabase.table('projects').select('status').eq('id', project_id).execute()
+        old_status = old_res.data[0].get('status', 'Mới tiếp nhận') if old_res.data else "Mới tiếp nhận"
 
-        if not project_record:
-            raise Exception(f"Không tìm thấy bản ghi công trình với định danh: '{identifier}' trong CSDL.")
-
-        real_id = project_record['id']
-        old_status = project_record.get('status', 'Mới tiếp nhận')
-
-        # 2. Thực hiện UPDATE trực tiếp vào bảng 'projects' theo đúng id (uuid) chuẩn xác
+        # 2. Thực hiện lệnh UPDATE trực tiếp và yêu cầu trả về dữ liệu sau khi update (.execute())
         update_res = supabase.table('projects').update({
             "status": new_status
-        }).eq('id', real_id).execute()
+        }).eq('id', project_id).execute()
 
+        # Kiểm tra nếu Supabase trả về dữ liệu trống (thường do RLS chặn hoặc sai ID)
         if not update_res.data:
-            raise Exception("Lệnh update không thành công trên CSDL.")
+            raise Exception("Supabase từ chối cập nhật. Có thể do chính sách RLS chặn quyền UPDATE trên bảng projects.")
 
-        # 3. Ghi log lịch sử vào bảng 'project_status_history'
+        # 3. Ghi log lịch sử thay đổi trạng thái
         try:
             supabase.table('project_status_history').insert({
-                "project_id": real_id,
+                "project_id": project_id,
                 "old_status": old_status,
                 "new_status": new_status,
                 "note": f"Cập nhật trạng thái từ '{old_status}' sang '{new_status}'"
             }).execute()
         except Exception as history_err:
-            print(f"Cảnh báo ghi lịch sử status: {history_err}")
+            print(f"Không thể ghi log lịch sử: {history_err}")
 
         return True
 
