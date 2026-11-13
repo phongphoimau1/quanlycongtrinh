@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 from services.email_service import get_emails
-from modules.ai_processing.service import process_email_with_ai  # [ĐÃ SỬA] Đưa import lên đầu file
+from modules.ai_processing.service import create_project_directly_from_email  # [ĐÃ SỬA] Đưa import lên đầu file
 
 st.title("📧 Quản lý Email Yêu Cầu")
 
