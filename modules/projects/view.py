@@ -16,7 +16,6 @@ search = st.text_input("🔍 Tìm kiếm công trình (Nhập tên, mã hoặc k
 col_t1, col_t2 = st.columns([5, 1])
 with col_t2:
     if st.button("➕ Tạo công trình", type="primary", width='stretch'):
-        # Chuyển hướng sang trang tạo mới nếu có
         st.switch_page("modules/projects/create.py")
 
 # 3. Lấy danh sách công trình từ CSDL
@@ -59,7 +58,7 @@ if projects_data:
         "project_code": "Mã CT",
         "project_name": "Tên công trình",
         "customer_name": "Khách hàng",
-        "staff_name": "Nhân viên phụ trách", # Hiển thị trực tiếp tên nhân sự đã lưu
+        "staff_name": "Nhân viên phụ trách", # Hiển thị trực tiếp tên nhân sự đã lưu (Ms Hân, Mr Thái,...)
         "status": "Trạng thái",
         "received_date": "Ngày nhận"
     })
@@ -73,7 +72,7 @@ if projects_data:
         on_select="rerun"
     )
 
-    # 5. XỬ LÝ KHI CLICK CHỌN DÒNG
+    # 5. XỬ LÝ KHI CLICK CHỌN DÒNG (Duy nhất 1 khối chuẩn xác)
     selected_rows = event.selection.rows
     if selected_rows:
         selected_index = selected_rows[0]
@@ -83,25 +82,6 @@ if projects_data:
         if proj_code:
             st.session_state["selected_project_code"] = proj_code
             st.toast(f"Đang mở chi tiết công trình: {proj_code}", icon="🚀")
-            st.switch_page("modules/projects/detail.py") 
-else:
-    st.info("📭 Chưa có công trình nào trên hệ thống.")
-
-    # 5. XỬ LÝ KHI NGƯỜI DÙNG CLICK CHỌN 1 DÒNG TRÊN BẢNG
-    selected_rows = event.selection.rows
-    if selected_rows:
-        selected_index = selected_rows[0]
-        selected_row_data = df_proj.iloc[selected_index]
-        proj_code = selected_row_data.get('project_code')
-        
-        if proj_code:
-            # Lưu mã công trình vào Session State
-            st.session_state["selected_project_code"] = proj_code
-            
-            # Hiển thị thông báo nhỏ và điều hướng tự động sang trang chi tiết
-            st.toast(f"Đang mở chi tiết công trình: {proj_code}", icon="🚀")
-            
-            # Chuyển hướng sang trang chi tiết
             st.switch_page("modules/projects/detail.py") 
 else:
     st.info("📭 Chưa có công trình nào trên hệ thống.")
