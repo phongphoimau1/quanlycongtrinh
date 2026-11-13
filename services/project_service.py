@@ -38,6 +38,14 @@ def get_project_by_code(project_code):
     response = supabase.table("projects").select("*").eq("project_code", project_code).execute()
     return response.data[0] if response.data else None
 
+def get_all_projects():
+    """Lấy toàn bộ danh sách công trình từ bảng projects trên Supabase"""
+    try:
+        res = supabase.table('projects').select('*').execute()
+        return res.data if res.data else []
+    except Exception as e:
+        print(f"Lỗi lấy danh sách công trình: {e}")
+        return []
 def update_project_status(project_id, new_status):
     """Cập nhật trạng thái công trình (Trigger DB sẽ tự động lưu lịch sử)"""
     return supabase.table("projects").update({"status": new_status}).eq("id", project_id).execute().data
