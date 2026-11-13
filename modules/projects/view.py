@@ -18,19 +18,42 @@ with col_t2:
     if st.button("➕ Tạo công trình", type="primary", width='stretch'):
         st.switch_page("modules/projects/create.py")
 
-# 3. Lấy danh sách công trình từ CSDL
+# 3. Lấy danh sách công trình và profiles để ánh xạ ngược UUID -> Tên nhân viên
 try:
     projects_data = get_all_projects() 
+    
+    # Truy vấn bảng profiles để lấy danh sách ánh xạ id -> full_name
+    profiles_res = supabase.table('profiles').select('id, full_name, email').execute()
+    profiles_list = profiles_res.data if profiles_res.data else []
+    
+    # Tạo dictionary dịch ngược: UUID hoặc chuỗi ID -> Tên nhân viên
+    uuid_to_name = {}
+    for p in profiles_list:
+        p_id = str(p.get('id'))
+        p_name = p.get('full_name') or p.get('email') or "Chưa rõ"
+        uuid_to_name[p_id] = p_name
+
 except Exception as e:
     st.error(f"❌ Lỗi tải dữ liệu CSDL: {e}")
     projects_data = []
+    uuid_to_name = {}
 
 if projects_data:
     df_proj = pd.DataFrame(projects_data)
     
-    # Đảm bảo cột assigned_to hiển thị trực tiếp, nếu trống thì hiện "Chưa phân công"
+    # Hàm ánh xạ thông minh: Nếu là UUID thì tra cứu tên, nếu đã là tên thì giữ nguyên
+    def get_staff_display_name(val):
+        if not val:
+            return "Chưa phân công"
+        val_str = str(val).strip()
+        # Nếu giá trị nằm trong dictionary UUID -> Tên thì đổi sang Tên
+        if val_str in uuid_to_name:
+            return uuid_to_name[val_str]
+        # Nếu giá trị chính là tên nhân sự cứng thì giữ nguyên
+        return val_str
+
     if 'assigned_to' in df_proj.columns:
-        df_proj['staff_name'] = df_proj['assigned_to'].fillna("Chưa phân công")
+        df_proj['staff_name'] = df_proj['assigned_to'].apply(get_staff_display_name)
     else:
         df_proj['staff_name'] = "Chưa phân công"
     
@@ -58,7 +81,7 @@ if projects_data:
         "project_code": "Mã CT",
         "project_name": "Tên công trình",
         "customer_name": "Khách hàng",
-        "staff_name": "Nhân viên phụ trách", # Hiển thị trực tiếp tên nhân sự đã lưu (Ms Hân, Mr Thái,...)
+        "staff_name": "Nhân viên phụ trách", # Đã tự động dịch ngược UUID thành Tên nhân viên chuẩn xác
         "status": "Trạng thái",
         "received_date": "Ngày nhận"
     })
@@ -72,7 +95,7 @@ if projects_data:
         on_select="rerun"
     )
 
-    # 5. XỬ LÝ KHI CLICK CHỌN DÒNG (Duy nhất 1 khối chuẩn xác)
+    # 5. XỬ LÝ KHI CLICK CHỌN DÒNG
     selected_rows = event.selection.rows
     if selected_rows:
         selected_index = selected_rows[0]
