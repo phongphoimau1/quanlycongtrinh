@@ -94,5 +94,23 @@ def create_project_directly_from_email(
             "data": project_payload
         }
 
+    # 3. Ghi vết liên kết vào bảng 'project_emails'
+        if project_id and email_id:
+            try:
+                supabase.table('project_emails').insert({
+                    "project_id": project_id,
+                    "email_id": email_id,
+                    "relation_type": "source",
+                    "is_confirmed": True
+                }).execute()
+            except Exception:
+                pass
+
+        # 4. CẬP NHẬT TRẠNG THÁI EMAIL GỐC THÀNH "Đã giao" (Cực kỳ quan trọng)
+        if email_id:
+            update_mail_res = supabase.table('emails').update({
+                "processing_status": "Đã giao"
+            }).eq("id", email_id).execute()
+            print("Debug Update Email Status:", update_mail_res)
     except Exception as e:
         return {"success": False, "message": f"Lỗi hệ thống database: {str(e)}"}
