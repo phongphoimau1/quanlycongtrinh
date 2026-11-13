@@ -147,17 +147,17 @@ if data:
                         if not customer_name:
                             st.warning("⚠️ Vui lòng nhập Tên khách hàng!")
                         else:
-                            # 2. Định nghĩa trực tiếp biến ngay tại thời điểm submit form
+                            # 1. Chuyển đổi giá trị nhân viên phụ trách an toàn từ selectbox
                             assigned_to_final = staff_name if staff_name != "Chưa phân nhân sự" else None
 
-                            # 3. Gọi hàm service tạo công trình
+                            # 2. Gọi hàm service với đúng tên biến assigned_to_final
                             result = create_project_directly_from_email(
                                 email_id=selected_email['ID'],
                                 customer_name=customer_name,
                                 project_name=project_name,
                                 project_code=project_code,
                                 category_id=category_id,
-                                assigned_to_uuid=assigned_to_final, # Truyền thẳng giá trị an toàn
+                                assigned_to_uuid=assigned_to_final,  # <-- Đã đồng bộ chuẩn xác 100%
                                 received_date=received_date,
                                 due_date=str(due_date),
                                 request_content=request_content,
