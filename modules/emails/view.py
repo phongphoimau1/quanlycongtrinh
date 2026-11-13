@@ -59,76 +59,6 @@ if data:
     st.markdown("### 📋 Danh sách Yêu cầu")
     
     # Tô màu trạng thái trực quan
-    def create_project_directly_from_email(
-    email_id, 
-    customer_name, 
-    project_name, 
-    project_code, 
-    category_id, 
-    assigned_to_uuid, 
-    received_date, 
-    due_date, 
-    request_content, 
-    status
-):
-    """
-    Tạo dự án trực tiếp từ email với đầy đủ tham số từ form view.py
-    và đồng bộ trạng thái email thành 'Đã giao'.
-    """
-    try:
-        # 1. Lấy organization_id mặc định đầu tiên
-        org_res = supabase.table('organizations').select('id').limit(1).execute()
-        org_id = org_res.data[0]['id'] if org_res.data else None
-
-        # 2. Chuẩn bị payload dữ liệu dự án
-        project_payload = {
-            "organization_id": org_id,
-            "project_code": project_code if project_code else None,
-            "project_name": project_name,
-            "customer_name": customer_name,
-            "category_id": category_id if category_id else None,
-            "assigned_to": assigned_to_uuid if assigned_to_uuid else None,
-            "received_date": received_date if received_date else None,
-            "completed_date": due_date if due_date else None,
-            "status": status,
-            "request_content": request_content
-        }
-        
-        # 3. Insert vào bảng 'projects'
-        proj_res = supabase.table('projects').insert(project_payload).execute()
-        if not proj_res.data:
-            return {"success": False, "message": "❌ Lỗi: Không thể tạo bản ghi dự án trong CSDL."}
-        
-        new_project_id = proj_res.data[0]['id']
-
-        # 4. Ghi vết liên kết vào bảng trung gian 'project_emails'
-        if email_id:
-            try:
-                supabase.table('project_emails').upsert({
-                    "project_id": new_project_id,
-                    "email_id": email_id,
-                    "relation_type": "source",
-                    "is_confirmed": True
-                }, on_conflict="project_id,email_id").execute()
-            except Exception as e:
-                print(f"Lỗi ghi project_emails: {e}")
-
-            # 5. Cập nhật trạng thái email gốc thành "Đã giao"
-            try:
-                supabase.table('emails').update({
-                    "processing_status": "Đã giao"
-                }).eq("id", email_id).execute()
-            except Exception as e:
-                print(f"Lỗi update status email: {e}")
-
-        return {
-            "success": True, 
-            "message": "🎉 Khởi tạo công trình và đồng bộ trạng thái email thành công!",
-            "project_id": new_project_id
-        }
-
-    except Exception as e:
-        return {"success": False, "message": f"❌ Lỗi hệ thống: {str(e)}"}
     def highlight_status(val):
         if val == 'Đã giao':
             return 'background-color: #d4edda; color: #155724;' # Xanh lá (Đã giao)
@@ -136,15 +66,7 @@ if data:
             return 'background-color: #fff3cd; color: #856404;' # Vàng (Chưa xử lý)
         return ''
 
-    # ❌ SAI (Đang gọi trực tiếp trên DataFrame):
-    # event = st.dataframe(
-    #     df[["Người gửi", "Tiêu đề", "Phân loại", "Trạng thái", "Ngày nhận"]].map(
-    #         highlight_status, subset=['Trạng thái']
-    #     ),
-    #     ...
-    # )
-
-    # ✅ ĐÚNG (Thêm .style để kích hoạt tính năng tô màu Styler của Pandas):
+    # Hiển thị bảng kèm Styler tô màu chuẩn xác
     event = st.dataframe(
         df[["Người gửi", "Tiêu đề", "Phân loại", "Trạng thái", "Ngày nhận"]].style.map(
             highlight_status, subset=['Trạng thái']
