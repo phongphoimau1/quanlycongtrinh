@@ -37,6 +37,25 @@ def format_to_iso_date(date_input):
             continue
             
     return None # Trả về None nếu không match để tránh sập bảng
+def map_staff_name_to_uuid(staff_name):
+    """
+    Ánh xạ tên nhân sự cứng sang UUID giả định cố định hoặc chuẩn tương ứng 
+    để ném vào cột kiểu UUID của Supabase mà không bị lỗi 22P02.
+    (Hoặc bạn có thể tra cứu UUID thật từ bảng profiles nếu có).
+    """
+    if not staff_name or staff_name == "Chưa phân nhân sự":
+        return None
+        
+    # Mapping tĩnh các UUID cố định cho 5 nhân sự (tránh lỗi kiểu dữ liệu UUID)
+    staff_uuid_map = {
+        "Ms Hân": "11111111-1111-1111-1111-111111111111",
+        "Mr Thái": "22222222-2222-2222-2222-222222222222",
+        "Mr Thịnh": "33333333-3333-3333-3333-333333333333",
+        "Ms Hương": "44444444-4444-4444-4444-444444444444",
+        "Ms Hiếu": "55555555-5555-5555-5555-555555555555"
+    }
+    
+    return staff_uuid_map.get(staff_name, None)
 def create_project_directly_from_email(
     email_id, 
     customer_name, 
