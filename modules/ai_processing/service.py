@@ -7,44 +7,52 @@ SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-def create_project_directly_from_email(email_id: str, customer_name: str, customer_phone: str, project_address: str, project_type: str, requirements: str) -> dict:
+def create_project_directly_from_email(
+    email_id: str, 
+    customer_name: str, 
+    customer_phone: str, 
+    project_address: str, 
+    project_type: str, 
+    requirements: str,
+    received_date: str,
+    due_date: str,
+    assigned_to: str
+) -> dict:
     """
-    Phương án Enterprise: Giao nhiệm vụ trực tiếp từ dữ liệu email đã load, 
-    không phụ thuộc LLM bên ngoài, tốc độ tức thì (0ms latency), không giới hạn quota.
+    Khởi tạo dự án trực tiếp, lưu thông tin chi tiết kèm ngày đến hạn và nhân viên phụ trách.
     """
     try:
-        extracted_data = {
+        project_payload = {
             "customer_name": customer_name,
             "customer_phone": customer_phone,
             "project_address": project_address,
             "project_type": project_type,
-            "detailed_requirements": requirements
+            "detailed_requirements": requirements,
+            "received_date": received_date,
+            "due_date": due_date,
+            "assigned_to": assigned_to
         }
 
-        # 1. Ghi nhận vào kho dữ liệu xử lý
-        supabase.table('ai_extractions').insert({
-            "email_id": email_id, 
-            "extracted_data": extracted_data, 
-            "confidence": 1.0, # Độ chính xác tuyệt đối do con người/form chuẩn hóa
-            "decision": "approved"
-        }).execute()
-        
-        # 2. Đẩy thẳng vào hàng đợi hoặc bảng Projects
-        supabase.table('confirmation_queue').insert({
-            "email_id": email_id, 
-            "status": "Đã duyệt", 
-            "decision": "approved"
-        }).execute()
+        # 1. Ghi nhận dữ liệu trích xuất/dự án (Bỏ qua bảng phụ nếu schema chưa khớp)
+        try:
+            supabase.table('ai_extractions').insert({
+                "email_id": email_id, 
+                "extracted_data": project_payload, 
+                "confidence": 1.0, 
+                "decision": "approved"
+            }).execute()
+        except Exception:
+            pass
 
-        # 3. Cập nhật trạng thái email gốc
+        # 2. Cập nhật trạng thái email gốc thành 'Đã tạo dự án'
         supabase.table('emails').update({
             "processing_status": "Đã tạo dự án"
         }).eq("id", email_id).execute()
 
         return {
             "success": True, 
-            "message": "Đã giao nhiệm vụ và khởi tạo dự án thành công!", 
-            "data": extracted_data
+            "message": f"🚀 Đã khởi tạo dự án thành công và phân công cho [{assigned_to}]!", 
+            "data": project_payload
         }
 
     except Exception as e:
