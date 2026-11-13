@@ -78,7 +78,6 @@ if data:
     )
 
     # --- 3. KHU VỰC THAO TÁC KHI CLICK ---
-    # --- 3. KHU VỰC THAO TÁC KHI CLICK ---
     selected_rows = event.selection.rows
     if selected_rows:
         selected_index = selected_rows[0]
@@ -89,7 +88,7 @@ if data:
             
             col_act1, col_act2 = st.columns([3, 1])
             with col_act2:
-                # NÚT XÁC NHẬN THỦ CÔNG: Đánh dấu đã giao ngay lập tức mà không cần tạo project rườm rà
+                # NÚT XÁC NHẬN THỦ CÔNG: Đánh dấu đã giao ngay lập tức
                 if selected_email['Trạng thái'] != 'Đã giao':
                     if st.button("✅ Đánh dấu Đã giao", type="secondary", width='stretch'):
                         try:
@@ -108,23 +107,6 @@ if data:
                 st.success("✅ Email này đã được xử lý / bàn giao trên hệ thống.")
             else:
                 st.markdown("#### ⚡ Giao nhiệm vụ & Khởi tạo Dự án")
-                
-                # Truy vấn danh sách nhân sự an toàn tuyệt đối từ bảng profiles
-                try:
-                    profiles_res = supabase.table('profiles').select('id, full_name, email').execute()
-                    profiles_list = profiles_res.data if profiles_res.data else []
-                except Exception as e:
-                    print(f"Lỗi query profiles: {e}")
-                    profiles_list = []
-                
-                # Tạo dictionary mapping: Tên nhân viên hoặc Email -> UUID
-                profile_dict = {}
-                for p in profiles_list:
-                    name_key = p.get('full_name') or p.get('email') or "Nhân sự không tên"
-                    profile_dict[name_key] = p['id']
-                
-                if not profile_dict:
-                    profile_dict["Chưa có nhân sự trên hệ thống"] = None
                 
                 # Truy vấn categories để chọn loại công trình nếu cần
                 cat_res = supabase.table('categories').select('id, category_name').execute()
@@ -145,9 +127,18 @@ if data:
                     with col_d2:
                         due_date = st.date_input("Ngày đến hạn hoàn thành (Completed Date)")
                     
-                    # Chọn nhân viên và lấy đúng UUID
-                    staff_name = st.selectbox("Giao cho nhân viên phụ trách", list(profile_dict.keys()) if profile_dict else ["Chưa phân nhân sự"])
-                    assigned_to_uuid = profile_dict.get(staff_name)
+                    # DANH SÁCH NHÂN SỰ CỐ ĐỊNH (Hardcode trực tiếp theo yêu cầu)
+                    staff_options = [
+                        "Chưa phân nhân sự",
+                        "Ms Hân", 
+                        "Mr Thái", 
+                        "Mr Thịnh", 
+                        "Ms Hương", 
+                        "Ms Hiếu"
+                    ]
+                    staff_name = st.selectbox("Giao cho nhân viên phụ trách", staff_options)
+                    # Nếu chọn "Chưa phân nhân sự" thì truyền None, ngược lại truyền thẳng tên chuỗi
+                    assigned_to_value = staff_name if staff_name != "Chưa phân nhân sự" else None
 
                     status = st.selectbox("Trạng thái công trình", ["Đang thực hiện", "Đã hoàn thành", "Tạm dừng"])
                     request_content = st.text_area("Nội dung yêu cầu chi tiết", value=selected_email['Tiêu đề'])
@@ -164,7 +155,7 @@ if data:
                                 project_name=project_name,
                                 project_code=project_code,
                                 category_id=category_id,
-                                assigned_to_uuid=assigned_to_uuid,
+                                assigned_to_uuid=assigned_to_value, # Truyền trực tiếp chuỗi tên nhân viên vừa chọn
                                 received_date=received_date,
                                 due_date=str(due_date),
                                 request_content=request_content,
