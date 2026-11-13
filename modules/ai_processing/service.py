@@ -77,10 +77,15 @@ def create_project_directly_from_email(
                 pass
 
         # 4. Cập nhật trạng thái email gốc thành "Đã giao" (Tránh giao trùng)
-        supabase.table('emails').update({
-            "processing_status": "Đã giao"
-        }).eq("id", email_id).execute()
-
+        # 4. CẬP NHẬT TRẠNG THÁI EMAIL GỐC THÀNH "Đã giao"
+        try:
+            update_res = supabase.table('emails').update({
+                "processing_status": "Đã giao"
+            }).eq("id", email_id).execute()
+            
+            print("Email update result:", update_res) # Debug log trên terminal
+        except Exception as update_err:
+            print(f"Lỗi update trạng thái email: {update_err}")
         return {
             "success": True, 
             "message": f"🚀 Khởi tạo công trình thành công! Mã: [{saved_code or project_id}]", 
