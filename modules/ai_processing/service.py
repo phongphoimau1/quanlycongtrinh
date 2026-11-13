@@ -3,37 +3,82 @@ import json
 import google.generativeai as genai
 from supabase import create_client, Client
 import streamlit as st
-from datetime import datetime
 
-# 1. Khởi tạo kết nối (Nên lấy từ st.secrets trong Streamlit)
 SUPABASE_URL = st.secrets["SUPABASE_URL"]
 SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
-GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"] # Thêm key này vào secrets của Streamlit
+GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 genai.configure(api_key=GEMINI_API_KEY)
 
-# --- BẮT ĐẦU NÂNG CẤP RADAR TỰ ĐỘNG DÒ MODEL ---
-# Thử dùng phiên bản mới nhất có hậu tố -latest
-target_model = 'gemini-1.5-flash-latest'
+# --- KHÓA CHẶT VÀO MODEL FLASH MIỄN PHÍ AN TOÀN 100% ---
+# Tuyệt đối không quét bừa bãi để tránh vớ phải các model Pro/Research bị tính phí hoặc giới hạn ngặt nghèo.
+TARGET_MODEL_NAME = 'gemini-1.5-flash'
 
-try:
-    # Nếu hệ thống vẫn kén chọn, chúng ta quét toàn bộ kho vũ khí của Google
-    available_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
-    flash_models = [m for m in available_models if '1.5-flash' in m]
-    if flash_models:
-        target_model = flash_models[0] # Lấy chính xác cái tên mà Google cho phép
-    elif available_models:
-        # Nếu tài khoản không có flash, lùi về dùng bản pro
-        target_model = available_models[-1]
-except Exception as e:
-    print("Không thể quét danh sách model, dùng mặc định:", e)
-
-print(f"🚀 Hệ thống đã chốt khóa mục tiêu vào: {target_model}")
-model = genai.GenerativeModel(target_model)
-# --- KẾT THÚC NÂNG CẤP ---
+print(f"🚀 Hệ thống sử dụng model miễn phí: {TARGET_MODEL_NAME}")
+model = genai.GenerativeModel(TARGET_MODEL_NAME)
+# -----------------------------------------------------
 
 def process_email_with_ai(email_id: str, subject: str, sender: str, content: str = "") -> dict:
+    try:
+        prompt = f"""
+        Bạn là một Trợ lý Kiến trúc sư trưởng xuất sắc. Nhiệm vụ của bạn là đọc email yêu cầu của khách hàng 
+        và bóc tách các thông tin cốt lõi để tạo Dự án thi công/phối màu.
+        
+        THÔNG TIN EMAIL:
+        - Tiêu đề: {subject}
+        - Người gửi: {sender}
+        - Nội dung: {content if content else subject}
+
+        YÊU CẦU BẮT BUỘC: 
+        Trả về DUY NHẤT một chuỗi JSON chuẩn xác (không markdown, không text thừa) theo cấu trúc:
+        {{
+            "customer_name": "Tên khách hàng hoặc null",
+            "customer_phone": "Số điện thoại hoặc null",
+            "project_address": "Địa chỉ hoặc null",
+            "project_type": "Phân loại (Nhà phố, Biệt thự... hoặc Chưa rõ)",
+            "detailed_requirements": "Tóm tắt yêu cầu chi tiết",
+            "confidence_score": 0.95
+        }}
+        """
+
+        response = model.generate_content(
+            prompt,
+            generation_config=genai.GenerationConfig(response_mime_type="application/json")
+        )
+        
+        ai_data = json.loads(response.text)
+        confidence = float(ai_data.pop("confidence_score", 0.5))
+
+        # Đẩy dữ liệu vào Database như cũ
+        supabase.table('ai_extractions').insert({
+            "email_id": email_id,
+            "extracted_data": ai_data,
+            "confidence": confidence,
+            "decision": "pending"
+        }).execute()
+        
+        supabase.table('confirmation_queue').insert({
+            "email_id": email_id,
+            "status": "Chờ duyệt",
+            "decision": "pending",
+        }).execute()
+
+        supabase.table('emails').update({
+            "processing_status": "Chờ duyệt AI"
+        }).eq("id", email_id).execute()
+
+        return {
+            "success": True, 
+            "message": "AI đã bóc tách thành công!", 
+            "data": ai_data, 
+            "confidence": confidence
+        }
+
+    except Exception as e:
+        error_msg = f"Lỗi xử lý AI: {str(e)}"
+        print(error_msg)
+        return {"success": False, "message": error_msg}
     """
     Hàm lõi IQ 2000: Đọc email, gọi AI bóc tách, và phân phối vào 3 bảng Database.
     """
