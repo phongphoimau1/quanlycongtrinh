@@ -11,13 +11,39 @@ GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 genai.configure(api_key=GEMINI_API_KEY)
 
-# --- KHÓA CHẶT VÀO MODEL FLASH MIỄN PHÍ AN TOÀN 100% ---
-# Tuyệt đối không quét bừa bãi để tránh vớ phải các model Pro/Research bị tính phí hoặc giới hạn ngặt nghèo.
-TARGET_MODEL_NAME = 'gemini-1.5-flash'
+# --- THUẬT TOÁN TỰ ĐỘNG DÒ TÌM MODEL KHẢ DỤNG (SELF-HEALING) ---
+def get_working_model():
+    # Danh sách ưu tiên các dòng model flash/pro thông dụng hiện nay
+    preferred_names = ['gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-1.5-pro']
+    
+    try:
+        # Lấy danh sách model thực tế từ tài khoản Google AI Studio của bạn
+        available_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
+        print(emp := f"📋 Các model khả dụng trên tài khoản: {available_models}")
+        
+        # Kiểm tra xem có model nào trong danh sách ưu tiên khớp không
+        for pref in preferred_names:
+            # Google trả về dạng 'models/gemini-1.5-flash', nên ta dùng 'in'
+            matched = [m for m in available_models if pref in m]
+            if matched:
+                print(f"🎯 Đã chọn model tối ưu: {matched[0]}")
+                return genai.GenerativeModel(matched[0].replace("models/", ""))
+                
+        # Nếu không khớp danh sách ưu tiên, lấy đại model đầu tiên hỗ trợ
+        if available_models:
+            fallback = available_models[0].replace("models/", "")
+            print(f"⚠️ Dùng model dự phòng: {fallback}")
+            return genai.GenerativeModel(fallback)
+            
+    except Exception as e:
+        print(f"⚠️ Không thể liệt kê model, dùng mặc định: {e}")
+        
+    # Cứu cánh cuối cùng nếu không gọi được API list_models
+    return genai.GenerativeModel('gemini-1.5-flash')
 
-print(f"🚀 Hệ thống sử dụng model miễn phí: {TARGET_MODEL_NAME}")
-model = genai.GenerativeModel(TARGET_MODEL_NAME)
-# -----------------------------------------------------
+# Khởi tạo model tự động
+model = get_working_model()
+# ---------------------------------------------------------------
 
 def process_email_with_ai(email_id: str, subject: str, sender: str, content: str = "") -> dict:
     try:
@@ -50,7 +76,7 @@ def process_email_with_ai(email_id: str, subject: str, sender: str, content: str
         ai_data = json.loads(response.text)
         confidence = float(ai_data.pop("confidence_score", 0.5))
 
-        # Đẩy dữ liệu vào Database như cũ
+        # Đẩy dữ liệu vào Database
         supabase.table('ai_extractions').insert({
             "email_id": email_id,
             "extracted_data": ai_data,
