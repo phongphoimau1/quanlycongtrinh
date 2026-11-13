@@ -80,6 +80,41 @@ if data:
                     # TODO: Gọi hàm create_project(selected_email)
             else:
                 st.success("✅ Email này đã được đưa vào luồng dự án.")
+        # Khu vực import (thêm lên đầu file view.py)
+        # from modules.ai_processing.service import process_email_with_ai
+
+        # ... (code UI phía trên) ...
+
+        with st.expander(f"⚙️ Khu vực xử lý: {selected_email['Tiêu đề']}", expanded=True):
+            st.info(f"**Người gửi:** {selected_email['Người gửi']} | **Ngày nhận:** {selected_email['Ngày nhận']}")
+            
+            if selected_email['Trạng thái'] == 'Chưa xử lý':
+                st.warning("⚠️ Email này chưa được phân tích. Hãy để AI đọc và trích xuất dữ liệu tự động.")
+                
+                # NÚT BẤM KÍCH HOẠT AI
+                if st.button("✨ Phân tích bằng Trí tuệ Nhân tạo", type="primary", use_container_width=True):
+                    with st.spinner("🤖 AI đang đọc và phân tích email..."):
+                        # Gọi hàm Service
+                        result = process_email_with_ai(
+                            email_id=selected_email['ID'], # Cần truyền ID gốc của bảng emails
+                            subject=selected_email['Tiêu đề'],
+                            sender=selected_email['Người gửi'],
+                            content="" # Tương lai nếu lấy được body của email thì truyền vào đây
+                        )
+                        
+                        if result["success"]:
+                            st.success(f"✅ Đã phân tích xong! (Độ tự tin: {result['confidence'] * 100:.0f}%)")
+                            st.json(result["data"])
+                            st.info("👉 Dữ liệu đã được chuyển sang tab 'Chờ xác nhận'.")
+                            
+                            # Xóa cache và tải lại bảng để cập nhật trạng thái
+                            st.cache_data.clear()
+                            st.rerun()
+                        else:
+                            st.error(result["message"])
+            
+            elif selected_email['Trạng thái'] == 'Chờ duyệt AI':
+                st.success("🤖 AI đã xử lý email này. Vui lòng chuyển sang menu 'Chờ xác nhận' để duyệt tạo dự án.")
 
 else:
     st.info("📭 Hộp thư trống hoặc không tìm thấy kết quả phù hợp.")
