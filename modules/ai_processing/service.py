@@ -33,8 +33,9 @@ def process_email_with_ai(email_id: str, subject: str, sender: str, content: str
         """
 
         # ⚡ Gọi AI bằng SDK mới `google-genai` với model `gemini-3.8-flash`
+        # Thay vì dùng gemini-3.8-flash đang bị cạn quota hằng ngày
         response = client.models.generate_content(
-            model='gemini-3.8-flash',
+            model='gemini-1.5-flash', # Hoặc thử 'gemini-2.0-flash'
             contents=prompt,
             config=types.GenerateContentConfig(
                 response_mime_type="application/json",
