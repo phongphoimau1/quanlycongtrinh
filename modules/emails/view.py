@@ -131,7 +131,7 @@ if data:
                     staff_options = [
                         "Chưa phân nhân sự",
                         "Ms Hân", 
-                        "Mr Thái", 
+                        "Mr Peter", 
                         "Mr Thịnh", 
                         "Ms Hương", 
                         "Ms Hiếu"
