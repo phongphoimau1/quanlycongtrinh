@@ -14,7 +14,8 @@ genai.configure(api_key=GEMINI_API_KEY)
 # --- THUẬT TOÁN TỰ ĐỘNG DÒ TÌM MODEL KHẢ DỤNG (SELF-HEALING) ---
 def get_working_model():
     # Danh sách ưu tiên các dòng model flash/pro thông dụng hiện nay
-    preferred_names = ['gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-1.5-pro']
+    # Danh sách ưu tiên cập nhật theo thông báo mới nhất của Google
+    preferred_names = ['gemini-3.8-flash', 'gemini-2.0-flash', 'gemini-1.5-flash']
     
     try:
         # Lấy danh sách model thực tế từ tài khoản Google AI Studio của bạn
