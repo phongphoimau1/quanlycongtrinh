@@ -7,95 +7,87 @@ SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-def get_default_organization_id():
-    """Tự động tìm kiếm một organization_id hợp lệ từ database"""
-    try:
-        res = supabase.table('organizations').select('id').limit(1).execute()
-        if res.data and len(res.data) > 0:
-            return res.data[0]['id']
-    except Exception:
-        pass
-    return None
-
 def create_project_directly_from_email(
     email_id: str, 
     customer_name: str, 
-    customer_phone: str, 
-    project_address: str, 
-    project_type: str, 
-    requirements: str,
+    project_name: str,
+    project_code: str,
+    category_id: str,
+    assigned_to_uuid: str, # Nhận UUID chuẩn từ bảng profiles
     received_date: str,
     due_date: str,
-    assigned_to: str
+    request_content: str,
+    status: str = "Đang thực hiện"
 ) -> dict:
     """
-    Xử lý trọn vẹn:
-    1. Tạo dự án với trạng thái chuẩn ('Đang thực hiện') phục vụ Dashboard.
-    2. Trả về mã công trình (ID) vừa được tạo để xem chi tiết.
-    3. Cập nhật trạng thái email gốc thành 'Đã tạo dự án' để khóa không giao trùng.
+    Xử lý đúng chuẩn Schema:
+    1. Lấy đúng organization_id từ email gốc.
+    2. Ghi đúng vào các cột có sẵn trong bảng 'projects'.
+    3. Tạo liên kết trong bảng 'project_emails' để truy vết nguồn gốc email.
+    4. Cập nhật trạng thái email gốc thành 'Đã giao' để khóa, chống giao trùng.
+    5. Trả về project_id và project_code để xem chi tiết công trình.
     """
     try:
-        org_id = get_default_organization_id()
+        # 1. Lấy organization_id từ email gốc
+        email_res = supabase.table('emails').select('organization_id').eq('id', email_id).execute()
+        org_id = None
+        if email_res.data and len(email_res.data) > 0:
+            org_id = email_res.data[0].get('organization_id')
+        
+        if not org_id:
+            org_res = supabase.table('organizations').select('id').limit(1).execute()
+            if org_res.data:
+                org_id = org_res.data[0]['id']
 
-        # 1. Payload chuẩn cho bảng projects (Giải quyết phần 1 & 2: Trạng thái & Dashboard)
+        # 2. Payload chuẩn khớp 100% cột của bảng 'projects'
         project_payload = {
+            "organization_id": org_id,
+            "project_name": project_name if project_name else f"Công trình - {customer_name}",
             "customer_name": customer_name,
-            "project_address": project_address,
-            "project_type": project_type,
-            "detailed_requirements": requirements,
-            "received_date": received_date,
-            "due_date": due_date,
-            "status": "Đang thực hiện", # Giá trị chuẩn để Dashboard thống kê tiến độ
-            "assigned_to": assigned_to
+            "request_content": request_content,
+            "status": status, # Đảm bảo có trạng thái để Dashboard thống kê tiến độ
+            "received_date": received_date if received_date else None,
+            "completed_date": due_date if due_date else None,
         }
 
-        if org_id:
-            project_payload["organization_id"] = org_id
-        if customer_phone:
-            project_payload["customer_phone"] = customer_phone
-        if email_id:
-            project_payload["email_id"] = email_id
+        if project_code:
+            project_payload["project_code"] = project_code
+        if category_id:
+            project_payload["category_id"] = category_id
+        if assigned_to_uuid:
+            project_payload["assigned_to"] = assigned_to_uuid
 
-        # Thực thi thêm mới và yêu cầu trả về dữ liệu vừa tạo (Giải quyết phần 4: Lấy mã công trình)
+        # Thực thi Insert vào bảng projects và lấy kết quả trả về
         res = supabase.table('projects').insert(project_payload).execute()
         
-        created_project_id = None
-        if res.data and len(res.data) > 0:
-            created_project_id = res.data[0].get('id')
+        created_project = res.data[0] if res.data else {}
+        project_id = created_project.get('id')
+        saved_code = created_project.get('project_code')
 
-        # 2. Cập nhật trạng thái email gốc thành "Đã tạo dự án" (Giải quyết phần 3: Chống giao trùng)
-        if email_id:
-            supabase.table('emails').update({
-                "processing_status": "Đã tạo dự án"
-            }).eq("id", email_id).execute()
+        # 3. Ghi vết liên kết vào bảng 'project_emails'
+        if project_id and email_id:
+            try:
+                supabase.table('project_emails').insert({
+                    "project_id": project_id,
+                    "email_id": email_id,
+                    "relation_type": "source",
+                    "is_confirmed": True
+                }).execute()
+            except Exception:
+                pass
+
+        # 4. Cập nhật trạng thái email gốc thành "Đã giao" (Tránh giao trùng)
+        supabase.table('emails').update({
+            "processing_status": "Đã giao"
+        }).eq("id", email_id).execute()
 
         return {
             "success": True, 
-            "message": f"🚀 Khởi tạo thành công! Mã công trình: [{created_project_id or 'Đã đồng bộ'}] - Phân công cho: [{assigned_to}]", 
-            "project_id": created_project_id,
+            "message": f"🚀 Khởi tạo công trình thành công! Mã: [{saved_code or project_id}]", 
+            "project_id": project_id,
+            "project_code": saved_code,
             "data": project_payload
         }
 
     except Exception as e:
-        err_msg = str(e)
-        # Fallback tối giản nếu vướng bất kỳ lỗi schema phụ nào
-        try:
-            minimal_payload = {
-                "customer_name": customer_name,
-                "project_address": project_address,
-                "status": "Đang thực hiện"
-            }
-            fallback_res = supabase.table('projects').insert(minimal_payload).execute()
-            proj_id = fallback_res.data[0].get('id') if fallback_res.data else None
-            
-            if email_id:
-                supabase.table('emails').update({"processing_status": "Đã tạo dự án"}).eq("id", email_id).execute()
-                
-            return {
-                "success": True, 
-                "message": f"🚀 Khởi tạo công trình thành công (Chế độ tối giản). Mã: [{proj_id}]",
-                "project_id": proj_id,
-                "data": minimal_payload
-            }
-        except Exception as inner_e:
-            return {"success": False, "message": f"Lỗi hệ thống database: {str(inner_e)}"}
+        return {"success": False, "message": f"Lỗi hệ thống database: {str(e)}"}
