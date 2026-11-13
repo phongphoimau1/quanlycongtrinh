@@ -149,13 +149,17 @@ if data:
                         if not customer_name:
                             st.warning("⚠️ Vui lòng nhập Tên khách hàng!")
                         else:
+                            # 1. Xác định giá trị nhân viên phụ trách ngay khi submit form
+                            assigned_to_value = staff_name if staff_name != "Chưa phân nhân sự" else None
+
+                            # 2. Gọi hàm tạo dự án với đầy đủ tham số
                             result = create_project_directly_from_email(
                                 email_id=selected_email['ID'],
                                 customer_name=customer_name,
                                 project_name=project_name,
                                 project_code=project_code,
                                 category_id=category_id,
-                                assigned_to_uuid=assigned_to_value, # Truyền trực tiếp chuỗi tên nhân viên vừa chọn
+                                assigned_to_uuid=assigned_to_value, # Truyền thẳng tên nhân viên đã chọn
                                 received_date=received_date,
                                 due_date=str(due_date),
                                 request_content=request_content,
