@@ -1,32 +1,25 @@
 import streamlit as st
 from services.project_service import get_dashboard_stats
 
-st.title("📊 Tổng quan Hệ thống")
+st.title("📊 Tổng quan Tiến độ Dự án (Dashboard)")
 
-# Lấy dữ liệu thống kê thực tế
+# Lấy dữ liệu thống kê
 stats = get_dashboard_stats()
 
-# Hiển thị các thẻ chỉ số (KPI Cards)
-col1, col2, col3, col4 = st.columns(4)
+total = stats.get("total", 0)
+status_counts = stats.get("status_counts", {})
 
-with col1:
-    st.metric(label="Tổng công trình", value=stats["total"])
-with col2:
-    st.metric(label="Mới tiếp nhận", value=stats["new"])
-with col3:
-    st.metric(label="Đang xử lý", value=stats["processing"])
-with col4:
-    st.metric(label="Đã hoàn thành", value=stats["completed"])
+# Hiển thị các metric tổng quan
+col1, col2, col3 = st.columns(3)
+col1.metric("Tổng số công trình", total)
+col2.metric("Đang thực hiện", status_counts.get("Đang thực hiện", 0))
+col3.metric("Đã hoàn thành", status_counts.get("Đã hoàn thành", 0))
 
 st.markdown("---")
+st.subheader("📈 Chi tiết tiến độ các công trình")
 
-# Layout chia cột cho biểu đồ/danh sách sau này
-col_left, col_right = st.columns([6, 4])
-
-with col_left:
-    st.subheader("📈 Tiến độ tuần này")
-    st.info("Module biểu đồ sẽ được tích hợp ở giai đoạn Báo cáo (P0).")
-
-with col_right:
-    st.subheader("⚠️ Cần chú ý")
-    st.warning("Chưa có công trình nào sắp đến hạn.")
+if total > 0:
+    # Hiển thị bảng hoặc biểu đồ thống kê trạng thái
+    st.bar_chart(status_counts)
+else:
+    st.info("📭 Chưa có dữ liệu công trình để hiển thị thống kê.")
