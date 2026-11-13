@@ -59,6 +59,7 @@ def create_project_directly_from_email(
         org_id = org_res.data[0]['id'] if org_res.data else None
 
         # 2. Chuẩn bị payload dữ liệu dự án
+        # Chuẩn bị payload dữ liệu dự án (Đã bọc format ngày tháng chuẩn ISO)
         project_payload = {
             "organization_id": org_id,
             "project_code": project_code if project_code else None,
@@ -66,8 +67,8 @@ def create_project_directly_from_email(
             "customer_name": customer_name,
             "category_id": category_id if category_id else None,
             "assigned_to": assigned_to_uuid if assigned_to_uuid else None,
-            "received_date": received_date if received_date else None,
-            "completed_date": due_date if due_date else None,
+            "received_date": format_to_iso_date(received_date),  # <-- Đã được làm sạch chống lỗi 22008
+            "completed_date": format_to_iso_date(due_date),        # <-- Đã được làm sạch chuẩn ISO
             "status": status,
             "request_content": request_content
         }
