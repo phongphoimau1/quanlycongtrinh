@@ -66,8 +66,17 @@ if data:
             return 'background-color: #fff3cd; color: #856404;' # Vàng (Chưa xử lý)
         return ''
 
+    # ❌ SAI (Đang gọi trực tiếp trên DataFrame):
+    # event = st.dataframe(
+    #     df[["Người gửi", "Tiêu đề", "Phân loại", "Trạng thái", "Ngày nhận"]].map(
+    #         highlight_status, subset=['Trạng thái']
+    #     ),
+    #     ...
+    # )
+
+    # ✅ ĐÚNG (Thêm .style để kích hoạt tính năng tô màu Styler của Pandas):
     event = st.dataframe(
-        df[["Người gửi", "Tiêu đề", "Phân loại", "Trạng thái", "Ngày nhận"]].map(
+        df[["Người gửi", "Tiêu đề", "Phân loại", "Trạng thái", "Ngày nhận"]].style.map(
             highlight_status, subset=['Trạng thái']
         ),
         width='stretch',
