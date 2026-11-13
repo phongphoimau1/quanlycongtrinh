@@ -1,5 +1,6 @@
 import os
 import json
+import re
 import time
 from google import genai
 from google.genai import types
@@ -15,11 +16,7 @@ client = genai.Client(api_key=GEMINI_API_KEY)
 
 def process_email_with_ai(email_id: str, subject: str, sender: str, content: str = "") -> dict:
     prompt = f"""
-    Đọc tiêu đề email và trích xuất JSON:
-    - Tiêu đề: {subject}
-    - Người gửi: {sender}
-    
-    Trả về DUY NHẤT chuỗi JSON chuẩn xác:
+    Đọc tiêu đề email và trích xuất thông tin thành ĐÚNG định dạng JSON sau, không kèm bất kỳ văn bản nào khác:
     {{
         "customer_name": "Tên khách hàng hoặc null",
         "customer_phone": "Số điện thoại hoặc null",
@@ -28,12 +25,16 @@ def process_email_with_ai(email_id: str, subject: str, sender: str, content: str
         "detailed_requirements": "Yêu cầu tóm tắt",
         "confidence_score": 0.95
     }}
+
+    THÔNG TIN EMAIL:
+    - Tiêu đề: {subject}
+    - Người gửi: {sender}
+    - Nội dung: {content if content else subject}
     """
 
     max_retries = 3
     for attempt in range(max_retries):
         try:
-            # Gọi API với cơ chế thử lại khi gặp 503 quá tải
             response = client.models.generate_content(
                 model='gemini-3.8-flash',
                 contents=prompt,
@@ -45,7 +46,17 @@ def process_email_with_ai(email_id: str, subject: str, sender: str, content: str
             )
             
             if response and response.text:
-                ai_data = json.loads(response.text)
+                raw_text = response.text.strip()
+                
+                # 🛡️ BỘ LỌC VỆ SĨ: Trích xuất chính xác khối JSON nằm giữa cặp ngoặc nhọn {{ ... }}
+                match = re.search(r'\{.*\}', raw_text, re.DOTALL)
+                if match:
+                    json_str = match.group(0)
+                    ai_data = json.loads(json_str)
+                else:
+                    # Nếu không tìm thấy, ép parse trực tiếp
+                    ai_data = json.loads(raw_text)
+
                 confidence = float(ai_data.pop("confidence_score", 0.5))
 
                 # Ghi dữ liệu xuống Supabase
@@ -75,7 +86,6 @@ def process_email_with_ai(email_id: str, subject: str, sender: str, content: str
 
         except Exception as e:
             err_str = str(e)
-            # Nếu gặp lỗi quá tải (503) và chưa hết lượt thử -> Chờ 2 giây rồi thử lại
             if ("503" in err_str or "UNAVAILABLE" in err_str) and attempt < max_retries - 1:
                 time.sleep(2)
                 continue
@@ -83,6 +93,11 @@ def process_email_with_ai(email_id: str, subject: str, sender: str, content: str
             if "429" in err_str or "RESOURCE_EXHAUSTED" in err_str:
                 return {"success": False, "message": "⚠️ Đã vượt quá hạn mức miễn phí (20 lần/ngày). Vui lòng tạo API Key mới."}
             
+            # Nếu lỗi do JSON parse, thử lại lượt tiếp theo thay vì sập app ngay
+            if "JSON" in err_str or "Expecting property name" in err_str:
+                if attempt < max_retries - 1:
+                    continue
+                    
             return {"success": False, "message": f"Lỗi hệ thống GenAI: {err_str}"}
 
-    return {"success": False, "message": "⚠️ Máy chủ Google AI đang quá tải cao (503). Vui lòng bấm thử lại sau ít phút."}
+    return {"success": False, "message": "⚠️ AI trả về định dạng dữ liệu không hợp lệ sau nhiều lần thử."}
