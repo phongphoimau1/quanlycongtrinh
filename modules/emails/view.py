@@ -77,24 +77,28 @@ if data:
             if selected_email['Trạng thái'] == 'Chưa xử lý':
                 st.warning("⚠️ Email này chưa được phân tích. Hãy để AI đọc và trích xuất dữ liệu tự động.")
                 
-                if st.button("✨ Phân tích bằng Trí tuệ Nhân tạo", type="primary", use_container_width=True):
-                    with st.spinner("🤖 AI đang đọc và phân tích email..."):
-                        # Kích hoạt Siêu não Gemini
+                if st.button("✨ Phân tích bằng Trí tuệ Nhân tạo", type="primary", width='stretch'):
+                    # Dùng st.status thay vì st.spinner để hiển thị tiến trình minh bạch không bị kẹt
+                    with st.status("🤖 Đang kết nối AI...", expanded=True) as status:
+                        st.write("Đang gửi yêu cầu đến Google Gemini...")
+                        
+                        # Gọi Service
                         result = process_email_with_ai(
                             email_id=selected_email['ID'],
                             subject=selected_email['Tiêu đề'],
                             sender=selected_email['Người gửi'],
-                            content="" # Sẵn sàng cho nâng cấp lấy body email sau này
+                            content=""
                         )
                         
                         if result["success"]:
-                            st.success(f"✅ Đã phân tích xong! (Độ tự tin: {result['confidence'] * 100:.0f}%)")
+                            status.update(label="✅ Phân tích hoàn tất!", state="complete", expanded=False)
+                            st.success(result["message"])
                             st.json(result["data"])
-                            st.info("👉 Dữ liệu đã được chuyển sang tab 'Chờ xác nhận'.")
-                            
+                            st.info("👉 Dữ liệu đã chuyển sang tab 'Chờ xác nhận'.")
                             st.cache_data.clear()
                             st.rerun()
                         else:
+                            status.update(label="❌ Xử lý thất bại!", state="error", expanded=True)
                             st.error(result["message"])
             
             elif selected_email['Trạng thái'] == 'Chờ duyệt AI':
