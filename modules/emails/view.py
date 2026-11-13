@@ -109,10 +109,22 @@ if data:
             else:
                 st.markdown("#### ⚡ Giao nhiệm vụ & Khởi tạo Dự án")
                 
-                # Truy vấn danh sách nhân sự từ bảng profiles để lấy đúng UUID
-                profiles_res = supabase.table('profiles').select('id, full_name').execute()
-                profiles_list = profiles_res.data if profiles_res.data else []
-                profile_dict = {p['full_name']: p['id'] for p in profiles_list}
+                # Truy vấn danh sách nhân sự an toàn tuyệt đối từ bảng profiles
+                try:
+                    profiles_res = supabase.table('profiles').select('id, full_name, email').execute()
+                    profiles_list = profiles_res.data if profiles_res.data else []
+                except Exception as e:
+                    print(f"Lỗi query profiles: {e}")
+                    profiles_list = []
+                
+                # Tạo dictionary mapping: Tên nhân viên hoặc Email -> UUID
+                profile_dict = {}
+                for p in profiles_list:
+                    name_key = p.get('full_name') or p.get('email') or "Nhân sự không tên"
+                    profile_dict[name_key] = p['id']
+                
+                if not profile_dict:
+                    profile_dict["Chưa có nhân sự trên hệ thống"] = None
                 
                 # Truy vấn categories để chọn loại công trình nếu cần
                 cat_res = supabase.table('categories').select('id, category_name').execute()
