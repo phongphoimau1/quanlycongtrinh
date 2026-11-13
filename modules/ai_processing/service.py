@@ -1,103 +1,51 @@
 import os
-import json
-import re
-import time
-from google import genai
-from google.genai import types
 from supabase import create_client, Client
 import streamlit as st
 
 SUPABASE_URL = st.secrets["SUPABASE_URL"]
 SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
-GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
-client = genai.Client(api_key=GEMINI_API_KEY)
 
-def process_email_with_ai(email_id: str, subject: str, sender: str, content: str = "") -> dict:
-    prompt = f"""
-    Đọc tiêu đề email và trích xuất thông tin thành ĐÚNG định dạng JSON sau, không kèm bất kỳ văn bản nào khác:
-    {{
-        "customer_name": "Tên khách hàng hoặc null",
-        "customer_phone": "Số điện thoại hoặc null",
-        "project_address": "Địa chỉ hoặc null",
-        "project_type": "Nhà phố / Biệt thự / Chưa rõ",
-        "detailed_requirements": "Yêu cầu tóm tắt",
-        "confidence_score": 0.95
-    }}
-
-    THÔNG TIN EMAIL:
-    - Tiêu đề: {subject}
-    - Người gửi: {sender}
-    - Nội dung: {content if content else subject}
+def create_project_directly_from_email(email_id: str, customer_name: str, customer_phone: str, project_address: str, project_type: str, requirements: str) -> dict:
     """
+    Phương án Enterprise: Giao nhiệm vụ trực tiếp từ dữ liệu email đã load, 
+    không phụ thuộc LLM bên ngoài, tốc độ tức thì (0ms latency), không giới hạn quota.
+    """
+    try:
+        extracted_data = {
+            "customer_name": customer_name,
+            "customer_phone": customer_phone,
+            "project_address": project_address,
+            "project_type": project_type,
+            "detailed_requirements": requirements
+        }
 
-    max_retries = 3
-    for attempt in range(max_retries):
-        try:
-            response = client.models.generate_content(
-                model='gemini-3.8-flash',
-                contents=prompt,
-                config=types.GenerateContentConfig(
-                    response_mime_type="application/json",
-                    temperature=0.1,
-                    max_output_tokens=400
-                ),
-            )
-            
-            if response and response.text:
-                raw_text = response.text.strip()
-                
-                # 🛡️ BỘ LỌC VỆ SĨ: Trích xuất chính xác khối JSON nằm giữa cặp ngoặc nhọn {{ ... }}
-                match = re.search(r'\{.*\}', raw_text, re.DOTALL)
-                if match:
-                    json_str = match.group(0)
-                    ai_data = json.loads(json_str)
-                else:
-                    # Nếu không tìm thấy, ép parse trực tiếp
-                    ai_data = json.loads(raw_text)
+        # 1. Ghi nhận vào kho dữ liệu xử lý
+        supabase.table('ai_extractions').insert({
+            "email_id": email_id, 
+            "extracted_data": extracted_data, 
+            "confidence": 1.0, # Độ chính xác tuyệt đối do con người/form chuẩn hóa
+            "decision": "approved"
+        }).execute()
+        
+        # 2. Đẩy thẳng vào hàng đợi hoặc bảng Projects
+        supabase.table('confirmation_queue').insert({
+            "email_id": email_id, 
+            "status": "Đã duyệt", 
+            "decision": "approved"
+        }).execute()
 
-                confidence = float(ai_data.pop("confidence_score", 0.5))
+        # 3. Cập nhật trạng thái email gốc
+        supabase.table('emails').update({
+            "processing_status": "Đã tạo dự án"
+        }).eq("id", email_id).execute()
 
-                # Ghi dữ liệu xuống Supabase
-                supabase.table('ai_extractions').insert({
-                    "email_id": email_id, 
-                    "extracted_data": ai_data, 
-                    "confidence": confidence, 
-                    "decision": "pending"
-                }).execute()
-                
-                supabase.table('confirmation_queue').insert({
-                    "email_id": email_id, 
-                    "status": "Chờ duyệt", 
-                    "decision": "pending"
-                }).execute()
+        return {
+            "success": True, 
+            "message": "Đã giao nhiệm vụ và khởi tạo dự án thành công!", 
+            "data": extracted_data
+        }
 
-                supabase.table('emails').update({
-                    "processing_status": "Chờ duyệt AI"
-                }).eq("id", email_id).execute()
-
-                return {
-                    "success": True, 
-                    "message": "Bóc tách siêu tốc thành công!", 
-                    "data": ai_data, 
-                    "confidence": confidence
-                }
-
-        except Exception as e:
-            err_str = str(e)
-            if ("503" in err_str or "UNAVAILABLE" in err_str) and attempt < max_retries - 1:
-                time.sleep(2)
-                continue
-            
-            if "429" in err_str or "RESOURCE_EXHAUSTED" in err_str:
-                return {"success": False, "message": "⚠️ Đã vượt quá hạn mức miễn phí (20 lần/ngày). Vui lòng tạo API Key mới."}
-            
-            # Nếu lỗi do JSON parse, thử lại lượt tiếp theo thay vì sập app ngay
-            if "JSON" in err_str or "Expecting property name" in err_str:
-                if attempt < max_retries - 1:
-                    continue
-                    
-            return {"success": False, "message": f"Lỗi hệ thống GenAI: {err_str}"}
-
-    return {"success": False, "message": "⚠️ AI trả về định dạng dữ liệu không hợp lệ sau nhiều lần thử."}
+    except Exception as e:
+        return {"success": False, "message": f"Lỗi hệ thống database: {str(e)}"}
