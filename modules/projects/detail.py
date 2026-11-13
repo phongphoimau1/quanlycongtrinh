@@ -69,7 +69,7 @@ if project_code:
                     with st.spinner("Đang cập nhật CSDL..."):
                         try:
                             # Gọi service cập nhật
-                            update_project_status(project_id, new_status)
+                            update_project_status(project.get('id'), new_status)
                             
                             st.success(f"✅ Đã cập nhật thành công sang: **{new_status}**!")
                             st.balloons()
