@@ -24,6 +24,37 @@ def get_project_by_code(project_code: str):
         st.error(f"Lỗi truy vấn CSDL: {e}")
     return None
 
+def get_dashboard_stats():
+    """
+    Truy vấn và thống kê các chỉ số tổng quan cho Dashboard từ bảng 'projects'.
+    Trả về tổng số công trình và số lượng theo từng trạng thái tiến độ.
+    """
+    try:
+        res = supabase.table('projects').select('*').execute()
+        projects = res.data if res.data else []
+        
+        total_projects = len(projects)
+        
+        # Thống kê số lượng công trình theo trạng thái
+        status_counts = {}
+        for p in projects:
+            status = p.get('status', 'Mới tiếp nhận')
+            if not status:
+                status = 'Mới tiếp nhận'
+            status_counts[status] = status_counts.get(status, 0) + 1
+            
+        return {
+            "total": total_projects,
+            "status_counts": status_counts,
+            "projects": projects
+        }
+    except Exception as e:
+        print(f"Lỗi truy vấn thống kê Dashboard: {e}")
+        return {
+            "total": 0,
+            "status_counts": {},
+            "projects": []
+        }
 def update_project_status(project_id: str, new_status: str):
     """
     Cập nhật trạng thái công trình theo đúng ID (UUID) chuẩn của bảng projects
