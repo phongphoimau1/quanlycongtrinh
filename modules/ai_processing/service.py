@@ -43,44 +43,39 @@ def create_project_directly_from_email(
     project_name, 
     project_code, 
     category_id, 
-    assigned_to_uuid, 
+    assigned_to_uuid,  # Nhận giá trị nhân sự truyền vào (có thể là "Ms Hân", "Mr Thái",... hoặc None)
     received_date, 
     due_date, 
     request_content, 
     status
 ):
-    """
-    Tạo dự án trực tiếp từ email, ghi nhận bảng trung gian project_emails 
-    và cập nhật trạng thái email thành 'Đã giao'.
-    """
     try:
-        # 1. Lấy organization_id mặc định đầu tiên
+        # 1. Lấy organization_id mặc định
         org_res = supabase.table('organizations').select('id').limit(1).execute()
         org_id = org_res.data[0]['id'] if org_res.data else None
 
-        # 2. Chuẩn bị payload dữ liệu dự án
-        # Chuẩn bị payload dữ liệu dự án (Đã bọc format ngày tháng chuẩn ISO)
+        # 2. Payload dữ liệu dự án
         project_payload = {
             "organization_id": org_id,
             "project_code": project_code if project_code else None,
             "project_name": project_name,
             "customer_name": customer_name,
             "category_id": category_id if category_id else None,
-            "assigned_to": assigned_to_value,  # Lưu trực tiếp tên nhân viên ("Ms Hân", "Mr Thái",...) vào CSDL
-            "received_date": format_to_iso_date(received_date),
-            "completed_date": format_to_iso_date(due_date),
+            "assigned_to": assigned_to_uuid,  # Lưu trực tiếp tên nhân sự vào cột assigned_to
+            "received_date": received_date,
+            "completed_date": due_date,
             "status": status,
             "request_content": request_content
         }
         
-        # 3. Insert vào bảng 'projects'
+        # 3. Insert vào bảng projects
         proj_res = supabase.table('projects').insert(project_payload).execute()
         if not proj_res.data:
             return {"success": False, "message": "❌ Lỗi: Không thể tạo bản ghi dự án trong CSDL."}
         
         new_project_id = proj_res.data[0]['id']
 
-        # 4. Ghi vết liên kết vào bảng trung gian 'project_emails'
+        # 4. Ghi vết liên kết và cập nhật trạng thái email thành 'Đã giao'
         if email_id:
             try:
                 supabase.table('project_emails').upsert({
@@ -92,7 +87,6 @@ def create_project_directly_from_email(
             except Exception as e:
                 print(f"Lỗi ghi project_emails: {e}")
 
-            # 5. Ép buộc cập nhật trạng thái email gốc thành "Đã giao" trong bảng 'emails'
             try:
                 supabase.table('emails').update({
                     "processing_status": "Đã giao"
@@ -105,6 +99,9 @@ def create_project_directly_from_email(
             "message": "🎉 Khởi tạo công trình và đồng bộ trạng thái email thành công!",
             "project_id": new_project_id
         }
+
+    except Exception as e:
+        return {"success": False, "message": f"❌ Lỗi hệ thống: {str(e)}"}
 
     except Exception as e:
         return {"success": False, "message": f"❌ Lỗi hệ thống: {str(e)}"}
