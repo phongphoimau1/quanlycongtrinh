@@ -15,24 +15,7 @@ with col2:
     if st.button("🔄 Làm mới", width='stretch'):
         st.cache_data.clear()
         st.rerun()
-# Tô màu trực quan cho cột Trạng thái trên bảng danh sách email
-    def highlight_status(val):
-        if val == 'Đã tạo dự án':
-            return 'background-color: #d4edda; color: #155724;' # Xanh lá nhẹ
-        elif val == 'Chưa xử lý':
-            return 'background-color: #fff3cd; color: #856404;' # Vàng nhẹ
-        return ''
 
-    # Hiển thị dataframe với định dạng màu sắc chuyên nghiệp
-    st.dataframe(
-        df[["Người gửi", "Tiêu đề", "Phân loại", "Trạng thái", "Ngày nhận"]].style.applymap(
-            highlight_status, subset=['Trạng thái']
-        ),
-        width='stretch',
-        hide_index=True,
-        selection_mode="single-row",
-        on_select="rerun"
-    )
 # --- 2. TẢI VÀ XỬ LÝ DỮ LIỆU ---
 with st.spinner("Đang đồng bộ dữ liệu..."):
     try:
@@ -70,8 +53,19 @@ if data:
 
     st.markdown("### 📋 Danh sách Yêu cầu")
     
+    # Hàm tô màu trạng thái trực quan
+    def highlight_status(val):
+        if val == 'Đã tạo dự án':
+            return 'background-color: #d4edda; color: #155724;' # Xanh lá nhẹ
+        elif val == 'Chưa xử lý':
+            return 'background-color: #fff3cd; color: #856404;' # Vàng nhẹ
+        return ''
+
+    # Hiển thị bảng dữ liệu tương tác có áp dụng style màu sắc
     event = st.dataframe(
-        df[["Người gửi", "Tiêu đề", "Phân loại", "Trạng thái", "Ngày nhận"]],
+        df[["Người gửi", "Tiêu đề", "Phân loại", "Trạng thái", "Ngày nhận"]].style.map(
+            highlight_status, subset=['Trạng thái']
+        ),
         width='stretch',
         hide_index=True,
         selection_mode="single-row",
@@ -95,7 +89,6 @@ if data:
                 proj_address = st.text_input("Địa chỉ công trình", value="")
                 proj_type = st.selectbox("Phân loại dự án", ["Nhà phố", "Biệt thự", "Quán Cafe", "Nhà ống", "Chưa rõ"])
                 
-                # Bổ sung các trường: Ngày nhận, Ngày đến hạn, Phân công nhân viên
                 col_d1, col_d2 = st.columns(2)
                 with col_d1:
                     received_date = st.text_input("Ngày nhận", value=selected_email['Ngày nhận'])
@@ -104,7 +97,7 @@ if data:
                 
                 assigned_to = st.selectbox(
                     "Giao cho nhân viên phụ trách", 
-                    ["Kỹ sư Nguyễn Văn A", "Kỹ sư Trần Văn B", "Kiến trúc sư Lê Thị C", "Quản lý dự án - Hoàng Minh"]
+                    ["Kỹ sư Trần Văn Peter", "Kỹ sư Nguyễn Văn Thịnh", "Kiến trúc sư Hân Báo", "Kỹ sư - Hiếu nhỏ"]
                 )
                 
                 requirements = st.text_area("Yêu cầu chi tiết từ email", value=selected_email['Tiêu đề'])
