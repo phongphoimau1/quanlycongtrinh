@@ -11,30 +11,8 @@ GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 genai.configure(api_key=GEMINI_API_KEY)
 
-# --- THUẬT TOÁN DYNAMIC MODEL DISCOVERY (CHỐT HẠ 404) ---
-def get_live_flash_model():
-    try:
-        # Tự động quét kho vũ khí thực tế trên tài khoản Google của bạn
-        for m in genai.list_models():
-            if 'generateContent' in m.supported_generation_methods and 'flash' in m.name.lower():
-                model_id = m.name.replace("models/", "")
-                print(f"🎯 Đã tự động bắt được model Flash đang hoạt động: {model_id}")
-                return genai.GenerativeModel(model_id)
-        
-        # Nếu không tìm thấy chữ flash, lấy model đầu tiên hỗ trợ generateContent
-        for m in genai.list_models():
-            if 'generateContent' in m.supported_generation_methods:
-                model_id = m.name.replace("models/", "")
-                return genai.GenerativeModel(model_id)
-                
-    except Exception as e:
-        print(f"⚠️ Lỗi quét model: {e}")
-        
-    # Cứu cánh cuối cùng
-    return genai.GenerativeModel('gemini-1.5-flash')
-
-model = get_live_flash_model()
-# ---------------------------------------------------------
+# ⚡ GHIM THẲNG VÀO MODEL CHUẨN XÁC MÀ GOOGLE KHUYẾN CÁO TRONG LỖI
+model = genai.GenerativeModel('gemini-3.8-flash')
 
 def process_email_with_ai(email_id: str, subject: str, sender: str, content: str = "") -> dict:
     try:
