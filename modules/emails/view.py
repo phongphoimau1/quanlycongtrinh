@@ -127,18 +127,16 @@ if data:
                     with col_d2:
                         due_date = st.date_input("Ngày đến hạn hoàn thành (Completed Date)")
                     
-                    # DANH SÁCH NHÂN SỰ CỐ ĐỊNH (Hardcode trực tiếp theo yêu cầu)
+                    # 1. Khai báo danh sách nhân sự cố định (Hardcode) ngay bên trong form
                     staff_options = [
                         "Chưa phân nhân sự",
                         "Ms Hân", 
-                        "Mr Peter", 
+                        "Mr Thái", 
                         "Mr Thịnh", 
                         "Ms Hương", 
                         "Ms Hiếu"
                     ]
                     staff_name = st.selectbox("Giao cho nhân viên phụ trách", staff_options)
-                    # Nếu chọn "Chưa phân nhân sự" thì truyền None, ngược lại truyền thẳng tên chuỗi
-                    assigned_to_value = staff_name if staff_name != "Chưa phân nhân sự" else None
 
                     status = st.selectbox("Trạng thái công trình", ["Đang thực hiện", "Đã hoàn thành", "Tạm dừng"])
                     request_content = st.text_area("Nội dung yêu cầu chi tiết", value=selected_email['Tiêu đề'])
@@ -149,17 +147,17 @@ if data:
                         if not customer_name:
                             st.warning("⚠️ Vui lòng nhập Tên khách hàng!")
                         else:
-                            # 1. Xác định giá trị nhân viên phụ trách ngay khi submit form
+                            # 2. Xử lý giá trị nhân viên phụ trách NGAY TRONG KHI SUBMIT (An toàn 100%, không bao giờ mất biến)
                             assigned_to_value = staff_name if staff_name != "Chưa phân nhân sự" else None
 
-                            # 2. Gọi hàm tạo dự án với đầy đủ tham số
+                            # 3. Gọi hàm tạo dự án
                             result = create_project_directly_from_email(
                                 email_id=selected_email['ID'],
                                 customer_name=customer_name,
                                 project_name=project_name,
                                 project_code=project_code,
                                 category_id=category_id,
-                                assigned_to_uuid=assigned_to_value, # Truyền thẳng tên nhân viên đã chọn
+                                assigned_to_uuid=assigned_to_value, # Truyền thẳng tên nhân viên (Ms Hân, Mr Thái,...)
                                 received_date=received_date,
                                 due_date=str(due_date),
                                 request_content=request_content,
