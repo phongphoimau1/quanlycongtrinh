@@ -68,10 +68,16 @@ if project_code:
                 else:
                     with st.spinner("Đang cập nhật CSDL..."):
                         try:
-                            # Cập nhật trực tiếp vào bảng projects
-                            supabase.table('projects').update({
-                                "status": new_status
-                            }).eq('id', project_id).execute()
+                            # Gọi service cập nhật
+                            update_project_status(project_id, new_status)
+                            
+                            st.success(f"✅ Đã cập nhật thành công sang: **{new_status}**!")
+                            st.balloons()
+                            time.sleep(1)
+                            st.cache_data.clear()
+                            st.rerun() # Làm mới lại trang ngay lập tức
+                        except Exception as update_err:
+                            st.error(f"❌ {str(update_err)}")
                             
                             # Ghi log lịch sử thay đổi (Chặn lỗi nếu bảng lịch sử chưa sẵn sàng)
                             try:
