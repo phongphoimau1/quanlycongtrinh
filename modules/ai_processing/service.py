@@ -11,103 +11,25 @@ GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 genai.configure(api_key=GEMINI_API_KEY)
 
-# --- THUẬT TOÁN TỰ ĐỘNG DÒ TÌM MODEL KHẢ DỤNG (SELF-HEALING) ---
+# --- KHỞI TẠO MODEL AN TOÀN VÀ TỰ ĐỘNG THÍCH NGHI ---
 def get_working_model():
-    # Danh sách ưu tiên các dòng model flash/pro thông dụng hiện nay
-    # Danh sách ưu tiên cập nhật theo thông báo mới nhất của Google
-    preferred_names = ['gemini-3.8-flash', 'gemini-2.0-flash', 'gemini-1.5-flash']
-    
     try:
-        # Lấy danh sách model thực tế từ tài khoản Google AI Studio của bạn
-        available_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
-        print(emp := f"📋 Các model khả dụng trên tài khoản: {available_models}")
-        
-        # Kiểm tra xem có model nào trong danh sách ưu tiên khớp không
-        for pref in preferred_names:
-            # Google trả về dạng 'models/gemini-1.5-flash', nên ta dùng 'in'
-            matched = [m for m in available_models if pref in m]
-            if matched:
-                print(f"🎯 Đã chọn model tối ưu: {matched[0]}")
-                return genai.GenerativeModel(matched[0].replace("models/", ""))
-                
-        # Nếu không khớp danh sách ưu tiên, lấy đại model đầu tiên hỗ trợ
-        if available_models:
-            fallback = available_models[0].replace("models/", "")
-            print(f"⚠️ Dùng model dự phòng: {fallback}")
-            return genai.GenerativeModel(fallback)
-            
-    except Exception as e:
-        print(f"⚠️ Không thể liệt kê model, dùng mặc định: {e}")
-        
-    # Cứu cánh cuối cùng nếu không gọi được API list_models
-    return genai.GenerativeModel('gemini-1.5-flash')
+        # Thử lần lượt các phiên bản model flash chuẩn mực
+        for model_name in ['gemini-1.5-flash', 'gemini-1.5-pro']:
+            try:
+                return genai.GenerativeModel(model_name)
+            except Exception:
+                continue
+        return genai.GenerativeModel('gemini-1.5-flash')
+    except Exception:
+        return genai.GenerativeModel('gemini-1.5-flash')
 
-# Khởi tạo model tự động
 model = get_working_model()
-# ---------------------------------------------------------------
+# ---------------------------------------------------
 
 def process_email_with_ai(email_id: str, subject: str, sender: str, content: str = "") -> dict:
-    try:
-        prompt = f"""
-        Bạn là một Trợ lý Kiến trúc sư trưởng xuất sắc. Nhiệm vụ của bạn là đọc email yêu cầu của khách hàng 
-        và bóc tách các thông tin cốt lõi để tạo Dự án thi công/phối màu.
-        
-        THÔNG TIN EMAIL:
-        - Tiêu đề: {subject}
-        - Người gửi: {sender}
-        - Nội dung: {content if content else subject}
-
-        YÊU CẦU BẮT BUỘC: 
-        Trả về DUY NHẤT một chuỗi JSON chuẩn xác (không markdown, không text thừa) theo cấu trúc:
-        {{
-            "customer_name": "Tên khách hàng hoặc null",
-            "customer_phone": "Số điện thoại hoặc null",
-            "project_address": "Địa chỉ hoặc null",
-            "project_type": "Phân loại (Nhà phố, Biệt thự... hoặc Chưa rõ)",
-            "detailed_requirements": "Tóm tắt yêu cầu chi tiết",
-            "confidence_score": 0.95
-        }}
-        """
-
-        response = model.generate_content(
-            prompt,
-            generation_config=genai.GenerationConfig(response_mime_type="application/json")
-        )
-        
-        ai_data = json.loads(response.text)
-        confidence = float(ai_data.pop("confidence_score", 0.5))
-
-        # Đẩy dữ liệu vào Database
-        supabase.table('ai_extractions').insert({
-            "email_id": email_id,
-            "extracted_data": ai_data,
-            "confidence": confidence,
-            "decision": "pending"
-        }).execute()
-        
-        supabase.table('confirmation_queue').insert({
-            "email_id": email_id,
-            "status": "Chờ duyệt",
-            "decision": "pending",
-        }).execute()
-
-        supabase.table('emails').update({
-            "processing_status": "Chờ duyệt AI"
-        }).eq("id", email_id).execute()
-
-        return {
-            "success": True, 
-            "message": "AI đã bóc tách thành công!", 
-            "data": ai_data, 
-            "confidence": confidence
-        }
-
-    except Exception as e:
-        error_msg = f"Lỗi xử lý AI: {str(e)}"
-        print(error_msg)
-        return {"success": False, "message": error_msg}
     """
-    Hàm lõi IQ 2000: Đọc email, gọi AI bóc tách, và phân phối vào 3 bảng Database.
+    Hàm lõi IQ 2000: Đọc email, gọi AI bóc tách, và phân phối vào các bảng Database.
     """
     try:
         # ==========================================
@@ -130,11 +52,11 @@ def process_email_with_ai(email_id: str, subject: str, sender: str, content: str
             "project_address": "Địa chỉ thi công/phối màu (Nếu không thấy, trả về null)",
             "project_type": "Phân loại (VD: Nhà phố, Biệt thự, Quán Cafe, Nhà ống... Mặc định: Chưa rõ)",
             "detailed_requirements": "Tóm tắt yêu cầu chi tiết của khách hàng (Màu sắc, phong thủy, kích thước...)",
-            "confidence_score": 0.95 (Thang điểm từ 0.0 đến 1.0 đánh giá mức độ tự tin của bạn vào việc bóc tách này)
+            "confidence_score": 0.95
         }}
         """
 
-        # Bắt buộc AI nhả JSON (Tính năng siêu việt của Gemini)
+        # Bắt buộc AI trả về định dạng JSON
         response = model.generate_content(
             prompt,
             generation_config=genai.GenerationConfig(response_mime_type="application/json")
@@ -142,14 +64,14 @@ def process_email_with_ai(email_id: str, subject: str, sender: str, content: str
         
         # Parse chuỗi JSON AI trả về
         ai_data = json.loads(response.text)
-        confidence = float(ai_data.pop("confidence_score", 0.5)) # Tách điểm tự tin ra khỏi cục data
+        confidence = float(ai_data.pop("confidence_score", 0.5))
 
         # ==========================================
         # BƯỚC 2: RẢI THẢM DỮ LIỆU VÀO DATABASE
         # ==========================================
         
         # 2.1. Đẩy vào kho chứa kết quả AI (AI_EXTRACTIONS)
-        ai_ext_res = supabase.table('ai_extractions').insert({
+        supabase.table('ai_extractions').insert({
             "email_id": email_id,
             "extracted_data": ai_data,
             "confidence": confidence,
@@ -160,8 +82,7 @@ def process_email_with_ai(email_id: str, subject: str, sender: str, content: str
         supabase.table('confirmation_queue').insert({
             "email_id": email_id,
             "status": "Chờ duyệt",
-            "decision": "pending",
-            # candidate_project_id: Chưa tạo nên để null
+            "decision": "pending"
         }).execute()
 
         # 2.3. Cập nhật trạng thái email gốc
@@ -177,7 +98,6 @@ def process_email_with_ai(email_id: str, subject: str, sender: str, content: str
         }
 
     except Exception as e:
-        # Bắt lỗi chuẩn kỹ sư: Không crash app, chỉ ghi nhận lỗi
         error_msg = f"Lỗi xử lý AI: {str(e)}"
         print(error_msg)
         return {"success": False, "message": error_msg}
