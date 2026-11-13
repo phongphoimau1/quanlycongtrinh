@@ -46,6 +46,38 @@ def get_all_projects():
     except Exception as e:
         print(f"Lỗi lấy danh sách công trình: {e}")
         return []
-def update_project_status(project_id, new_status):
-    """Cập nhật trạng thái công trình (Trigger DB sẽ tự động lưu lịch sử)"""
-    return supabase.table("projects").update({"status": new_status}).eq("id", project_id).execute().data
+def update_project_status(project_id: str, new_status: str):
+    """
+    Cập nhật trạng thái công trình trực tiếp vào bảng 'projects' 
+    và ghi log lịch sử vào 'project_status_history'.
+    """
+    try:
+        # 1. Lấy trạng thái cũ hiện tại trong CSDL để phục vụ việc ghi log lịch sử
+        old_res = supabase.table('projects').select('status').eq('id', project_id).execute()
+        old_status = old_res.data[0].get('status') if old_res.data else "Mới tiếp nhận"
+
+        # 2. Thực hiện UPDATE trực tiếp vào bảng 'projects'
+        update_res = supabase.table('projects').update({
+            "status": new_status
+        }).eq('id', project_id).execute()
+
+        # Kiểm tra xem có thực sự update được dòng nào không
+        if not update_res.data:
+            raise Exception("Không tìm thấy bản ghi project tương ứng để cập nhật trên CSDL.")
+
+        # 3. Ghi log lịch sử vào bảng 'project_status_history'
+        try:
+            supabase.table('project_status_history').insert({
+                "project_id": project_id,
+                "old_status": old_status,
+                "new_status": new_status,
+                "note": f"Cập nhật trạng thái từ '{old_status}' sang '{new_status}'"
+            }).execute()
+        except Exception as history_err:
+            print(f"Cảnh báo ghi lịch sử status: {history_err}")
+
+        return True
+
+    except Exception as e:
+        # Ném lỗi ra ngoài để giao diện hiển thị thông báo chi tiết
+        raise Exception(f"Lỗi database khi cập nhật trạng thái: {str(e)}")
