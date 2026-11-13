@@ -7,28 +7,39 @@ supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 def get_emails(search_term=""):
     """
-    Hàm lấy danh sách email chuẩn xác và an toàn tuyệt đối:
-    - Luôn trả về đầy đủ toàn bộ email từ CSDL như ban đầu.
-    - Tự động gán trạng thái dựa trên cột processing_status có sẵn trong bảng emails.
+    Hàm lấy danh sách email kết hợp kiểm tra bảng 'project_emails':
+    - Luôn tải đầy đủ danh sách thư từ CSDL.
+    - Tự động đánh dấu trạng thái 'Đã giao' nếu email đó đã được liên kết với bất kỳ dự án nào trong 'project_emails'.
     """
     try:
-        # Truy vấn trực tiếp toàn bộ bảng emails từ CSDL
+        # 1. Lấy toàn bộ danh sách email
         res = supabase.table('emails').select('*').order('received_at', desc=True).execute()
         emails = res.data if res.data else []
 
         if not emails:
             return []
 
-        # Chuẩn hóa trạng thái hiển thị
+        # 2. Lấy danh sách các email_id đã được tạo dự án từ bảng trung gian 'project_emails'
+        linked_email_ids = set()
+        try:
+            link_res = supabase.table('project_emails').select('email_id').execute()
+            if link_res.data:
+                linked_email_ids = {str(item['email_id']) for item in link_res.data if item.get('email_id')}
+        except Exception:
+            pass
+
+        # 3. Chuẩn hóa trạng thái động cho từng email
         for email in emails:
+            email_id = str(email.get('id', ''))
             db_status = email.get('processing_status')
-            # Nếu trong database đã lưu là "Đã giao" hoặc "Đã tạo dự án", giữ nguyên
-            if db_status in ['Đã giao', 'Đã tạo dự án']:
+            
+            # Nếu email đã có trong bảng project_emails hoặc status trong DB là Đã giao -> Đổi thành "Đã giao"
+            if email_id in linked_email_ids or db_status in ['Đã giao', 'Đã tạo dự án']:
                 email['processing_status'] = 'Đã giao'
             else:
                 email['processing_status'] = 'Chưa xử lý'
 
-        # Lọc theo từ khóa tìm kiếm nếu có
+        # 4. Lọc theo từ khóa tìm kiếm (nếu có)
         if search_term:
             keyword = search_term.lower()
             filtered_emails = []
@@ -42,5 +53,5 @@ def get_emails(search_term=""):
         return emails
 
     except Exception as e:
-        st.error(f"Lỗi kết nối CSDL khi lấy email: {str(e)}")
+        print(f"Lỗi truy vấn email: {e}")
         return []
