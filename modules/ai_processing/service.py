@@ -11,7 +11,7 @@ GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-# ⚡ Khởi tạo client theo chuẩn SDK mới nhất của Google (`google.genai`)
+# Khởi tạo client chuẩn SDK mới
 client = genai.Client(api_key=GEMINI_API_KEY)
 
 def process_email_with_ai(email_id: str, subject: str, sender: str, content: str = "") -> dict:
@@ -32,10 +32,9 @@ def process_email_with_ai(email_id: str, subject: str, sender: str, content: str
         }}
         """
 
-        # ⚡ Gọi AI bằng SDK mới `google-genai` với model `gemini-3.8-flash`
-        # Thay vì dùng gemini-3.8-flash đang bị cạn quota hằng ngày
+        # ⚡ Chuyển sang model gemini-2.5-flash (hoặc gemini-2.0-flash) để tránh 404 và làm mới hạn mức
         response = client.models.generate_content(
-            model='gemini-1.5-flash', # Hoặc thử 'gemini-2.0-flash'
+            model='gemini-2.5-flash',
             contents=prompt,
             config=types.GenerateContentConfig(
                 response_mime_type="application/json",
@@ -70,7 +69,7 @@ def process_email_with_ai(email_id: str, subject: str, sender: str, content: str
 
         return {
             "success": True, 
-            "message": "Bóc tách siêu tốc với Google GenAI thành công!", 
+            "message": "Bóc tách siêu tốc thành công!", 
             "data": ai_data, 
             "confidence": confidence
         }
