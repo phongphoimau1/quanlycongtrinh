@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+from services.auth_service import admin_set_user_password
 from services.admin_service import (
     get_all_users,
     create_new_user,
