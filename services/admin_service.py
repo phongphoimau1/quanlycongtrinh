@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 import streamlit as st
 from supabase import create_client
-
+from services.auth_service import hash_password
 SUPABASE_URL = st.secrets["SUPABASE_URL"]
 SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
@@ -23,6 +23,45 @@ def get_default_org_id():
     except Exception:
         return None
 
+def create_new_user(full_name, email, role="staff", is_active=True, password=None):
+    try:
+        org_id = get_default_org_id()
+        clean_name = str(full_name).strip()
+        clean_email = str(email).strip().lower()
+
+        if not password or len(str(password).strip()) < 6:
+            return {"success": False, "message": "⚠️ Vui lòng thiết lập mật khẩu tối thiểu 6 ký tự cho nhân viên!"}
+
+        existing = supabase.table("profiles").select("id, email").eq("email", clean_email).execute()
+        if existing.data:
+            return {"success": False, "message": f"Email '{clean_email}' đã tồn tại trong bảng profiles!"}
+
+        new_profile_id = str(uuid.uuid4())
+        pw_hash = hash_password(password)
+
+        profile_payload = {
+            "id": new_profile_id,
+            "organization_id": org_id,
+            "full_name": clean_name,
+            "email": clean_email,
+            "role": role,
+            "is_active": bool(is_active),
+            "password_hash": pw_hash,
+        }
+
+        res = supabase.table("profiles").insert(profile_payload).execute()
+        if res.data:
+            log_system_action(
+                action="CREATE_USER",
+                entity_type="profiles",
+                entity_id=new_profile_id,
+                details={"full_name": clean_name, "email": clean_email, "role": role},
+            )
+            return {"success": True, "message": f"✅ Đã tạo nhân viên '{clean_name}' với mật khẩu bảo mật riêng!"}
+
+        return {"success": False, "message": "Không nhận được dữ liệu phản hồi khi tạo profile."}
+    except Exception as e:
+        return {"success": False, "message": f"Lỗi khi tạo nhân viên: {e}"}
 
 def log_system_action(action, entity_type, entity_id=None, details=None, actor_id=None):
     try:
