@@ -79,7 +79,8 @@ def render_action_panel(selected_item, panel_key_prefix):
             with c4:
                 due_date = st.date_input("Hạn hoàn thành")
 
-            staff_options = ["Chưa phân nhân sự", "Ms Hân", "Mr Thái", "Mr Thịnh", "Ms Hương", "Ms Hiếu"]
+            from services.project_service import get_active_staff_options
+            staff_options = get_active_staff_options(include_unassigned=True, unassigned_label="Chưa phân nhân sự")
             staff_name = st.selectbox("Phân công nhân viên phụ trách", staff_options)
             status = st.selectbox("Trạng thái khởi tạo", ["Đang thực hiện", "Mới tiếp nhận", "Hoàn thành"])
             request_content = st.text_area("Nội dung yêu cầu", value=selected_item["extracted_requirements"])
