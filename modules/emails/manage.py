@@ -9,41 +9,44 @@ supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 st.title("📧 Quản lý & Tra cứu Email Hệ thống")
 
-# 1. Tải dữ liệu từ bảng emails, project_emails, projects và email_attachments
-try:
-    em_res = supabase.table('emails').select('*').order('received_at', desc=True).execute()
-    emails_data = em_res.data if em_res.data else []
+def safe_fetch_table(table_name, columns="*", order_col=None):
+    """
+    Truy vấn bảng an toàn: Nếu bảng bị chặn quyền RLS/42501, 
+    tự động trả về danh sách rỗng [] thay vì làm sập toàn bộ trang.
+    """
+    try:
+        query = supabase.table(table_name).select(columns)
+        if order_col:
+            query = query.order(order_col, desc=True)
+        res = query.execute()
+        return res.data if res.data else []
+    except Exception as e:
+        print(f"Cảnh báo phân quyền bảng {table_name}: {e}")
+        return []
 
-    pe_res = supabase.table('project_emails').select('*').execute()
-    pe_data = pe_res.data if pe_res.data else []
+# 1. Tải dữ liệu độc lập từ từng bảng (Cô lập lỗi 42501)
+emails_data = safe_fetch_table('emails', '*', order_col='received_at')
+pe_data = safe_fetch_table('project_emails', '*')
+proj_data = safe_fetch_table('projects', 'id, project_code, project_name')
+att_data = safe_fetch_table('email_attachments', '*')
 
-    proj_res = supabase.table('projects').select('id, project_code, project_name').execute()
-    proj_map = {p['id']: p for p in (proj_res.data or [])}
+proj_map = {p['id']: p for p in proj_data if 'id' in p}
 
-    att_res = supabase.table('email_attachments').select('*').execute()
-    att_data = att_res.data if att_res.data else []
+# Map email_id -> Danh sách công trình đã liên kết
+email_to_projects = {}
+for pe in pe_data:
+    eid = pe.get('email_id')
+    pid = pe.get('project_id')
+    if eid and pid and pid in proj_map:
+        p_code = proj_map[pid].get('project_code') or proj_map[pid].get('project_name')
+        email_to_projects.setdefault(eid, []).append(p_code)
 
-    # Map email_id -> Danh sách công trình đã liên kết
-    email_to_projects = {}
-    for pe in pe_data:
-        eid = pe.get('email_id')
-        pid = pe.get('project_id')
-        if eid and pid and pid in proj_map:
-            p_code = proj_map[pid].get('project_code') or proj_map[pid].get('project_name')
-            email_to_projects.setdefault(eid, []).append(p_code)
-
-    # Map email_id -> Số lượng và danh sách file đính kèm
-    email_to_attachments = {}
-    for att in att_data:
-        eid = att.get('email_id')
-        if eid:
-            email_to_attachments.setdefault(eid, []).append(att)
-
-except Exception as e:
-    st.error(f"❌ Lỗi truy xuất dữ liệu email: {e}")
-    emails_data = []
-    email_to_projects = {}
-    email_to_attachments = {}
+# Map email_id -> Số lượng và danh sách file đính kèm
+email_to_attachments = {}
+for att in att_data:
+    eid = att.get('email_id')
+    if eid:
+        email_to_attachments.setdefault(eid, []).append(att)
 
 # 2. Thống kê nhanh (KPIs)
 total_em = len(emails_data)
@@ -74,7 +77,6 @@ with c_f4:
         st.cache_data.clear()
         st.rerun()
 
-# Expander cho phép nhập/giả lập thêm Email mới vào hệ thống để test luồng
 with st.expander("➕ Tạo / Nhập Email thủ công vào Hệ thống (Dành cho Test hoặc Nhập bổ sung)", expanded=False):
     with st.form("form_manual_add_email"):
         cm1, cm2 = st.columns(2)
@@ -115,7 +117,6 @@ with st.expander("➕ Tạo / Nhập Email thủ công vào Hệ thống (Dành 
 if emails_data:
     df_em = pd.DataFrame(emails_data).fillna("")
 
-    # Bổ sung cột Công trình liên kết và Số file đính kèm
     df_em['linked_projects'] = df_em['id'].apply(
         lambda x: ", ".join(email_to_projects.get(x, [])) if x in email_to_projects else "Chưa gắn CT"
     )
@@ -224,12 +225,18 @@ if emails_data:
             with c_btn2:
                 if st.button("🗑️ Xóa Email này", type="secondary", width='stretch'):
                     try:
-                        supabase.table('project_emails').delete().eq('email_id', eid).execute()
-                        supabase.table('email_attachments').delete().eq('email_id', eid).execute()
+                        try:
+                            supabase.table('project_emails').delete().eq('email_id', eid).execute()
+                        except Exception:
+                            pass
+                        try:
+                            supabase.table('email_attachments').delete().eq('email_id', eid).execute()
+                        except Exception:
+                            pass
                         supabase.table('emails').delete().eq('id', eid).execute()
                         st.toast("🗑️ Đã xóa email khỏi hệ thống!", icon="🗑️")
                         st.rerun()
                     except Exception as ex:
-                        st.error(f"❌ Không thể xóa (có thể đang vướng khóa ngoại): {ex}")
+                        st.error(f"❌ Không thể xóa: {ex}")
 else:
     st.info("📭 Chưa có dữ liệu email nào trong hệ thống.")
