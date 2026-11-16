@@ -3,6 +3,7 @@ import time
 from datetime import datetime
 import streamlit as st
 from supabase import create_client
+import uuid
 
 SUPABASE_URL = st.secrets["SUPABASE_URL"]
 SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
@@ -19,6 +20,102 @@ MAX_LOGIN_ATTEMPTS = 5
 LOCKOUT_DURATION_SECONDS = 60
 
 
+
+def register_user_from_login_screen(
+    full_name: str,
+    email: str,
+    password: str,
+    role: str = "staff",
+    invite_code: str = "",
+):
+    """
+    Tạo tài khoản trực tiếp từ màn hình Đăng nhập với cơ chế kiểm soát bảo mật:
+    - Mật khẩu được băm một chiều SHA-256.
+    - Nếu chọn vai trò 'admin' hoặc 'manager', bắt buộc phải nhập đúng Mã Bảo mật Nội bộ.
+    """
+    clean_name = str(full_name or "").strip()
+    clean_email = str(email or "").strip().lower()
+    clean_pass = str(password or "").strip()
+    clean_role = str(role or "staff").strip().lower()
+
+    if not clean_name or not clean_email or not clean_pass:
+        return {"success": False, "message": "⚠️ Vui lòng nhập đầy đủ Họ tên, Email và Mật khẩu!"}
+
+    if "@" not in clean_email:
+        return {"success": False, "message": "⚠️ Địa chỉ Email không hợp lệ!"}
+
+    if len(clean_pass) < 6:
+        return {"success": False, "message": "⚠️ Mật khẩu phải có tối thiểu 6 ký tự!"}
+
+    # Kiểm tra Mã Bảo mật Nội bộ nếu người dùng đăng ký quyền Quản trị / Quản lý
+    secret_invite_code = str(st.secrets.get("INTERNAL_INVITE_CODE", "CONGTRINH2026")).strip()
+    if clean_role in ["admin", "manager"]:
+        if str(invite_code or "").strip() != secret_invite_code:
+            return {
+                "success": False,
+                "message": "🚫 Mã bảo mật nội bộ không đúng! Bạn cần mã ủy quyền để tạo tài khoản Quản trị/Quản lý.",
+            }
+
+    try:
+        # 1. Kiểm tra trùng lặp Email hoặc Tên trong bảng profiles
+        existing = supabase.table("profiles").select("id, email, full_name").execute()
+        for u in (existing.data or []):
+            if str(u.get("email") or "").strip().lower() == clean_email:
+                return {"success": False, "message": f"❌ Email '{clean_email}' đã được đăng ký trước đó!"}
+
+        # 2. Lấy organization_id mặc định
+        org_id = None
+        try:
+            org_res = supabase.table("organizations").select("id").limit(1).execute()
+            if org_res.data:
+                org_id = org_res.data[0]["id"]
+        except Exception:
+            pass
+
+        new_uid = str(uuid.uuid4())
+        pw_hash = hash_password(clean_pass)
+
+        profile_payload = {
+            "id": new_uid,
+            "organization_id": org_id,
+            "full_name": clean_name,
+            "email": clean_email,
+            "role": clean_role,
+            "is_active": True,
+            "password_hash": pw_hash,
+        }
+
+        try:
+            res = supabase.table("profiles").insert(profile_payload).execute()
+        except Exception as ins_err:
+            # Dự phòng nếu DB chưa chạy lệnh ALTER TABLE thêm cột password_hash
+            if "password_hash" in str(ins_err):
+                profile_payload.pop("password_hash", None)
+                res = supabase.table("profiles").insert(profile_payload).execute()
+            else:
+                raise ins_err
+
+        if res.data:
+            _record_login_audit(
+                {"id": new_uid, "full_name": clean_name, "email": clean_email, "role": clean_role},
+                status="SELF_REGISTERED",
+            )
+            return {
+                "success": True,
+                "user": {
+                    "id": new_uid,
+                    "full_name": clean_name,
+                    "email": clean_email,
+                    "role": clean_role,
+                    "is_active": True,
+                },
+                "message": f"🎉 Tạo tài khoản '{clean_name}' thành công! Bạn có thể đăng nhập ngay.",
+            }
+
+        return {"success": False, "message": "❌ Không thể khởi tạo bản ghi nhân sự."}
+
+    except Exception as e:
+        return {"success": False, "message": f"❌ Lỗi hệ thống khi tạo tài khoản: {e}"}
 def hash_password(raw_password: str) -> str:
     """
     Băm mật khẩu một chiều bằng thuật toán SHA-256 kết hợp chuỗi khóa Salt bảo mật.
