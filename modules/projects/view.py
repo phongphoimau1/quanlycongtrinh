@@ -41,13 +41,32 @@ except Exception as e:
 if projects_data:
     df_proj = pd.DataFrame(projects_data)
     
-    # 1. Xử lý an toàn cột nhân sự phụ trách, loại bỏ hoàn toàn khả năng sinh ra NaN
+    # Ánh xạ thông minh dựa trên chuỗi UUID giả lập / từ khóa giống câu lệnh SQL của bạn
     def get_staff_display_name(val):
         if not val or pd.isna(val):
             return "Chưa phân công"
         val_str = str(val).strip()
+        if not val_str or val_str.lower() in ["none", "nan", "null"]:
+            return "Chưa phân công"
+            
+        val_lower = val_str.lower()
+        
+        # Ánh xạ chuẩn xác theo quy luật SQL pattern bạn đã cung cấp
+        if "11111111" in val_str or "hân" in val_lower:
+            return "Ms Hân"
+        elif "22222222" in val_str or "thái" in val_lower:
+            return "Mr Thái"
+        elif "33333333" in val_str or "thịnh" in val_lower:
+            return "Mr Thịnh"
+        elif "44444444" in val_str or "hương" in val_lower:
+            return "Ms Hương"
+        elif "55555555" in val_str or "hiếu" in val_lower:
+            return "Ms Hiếu"
+            
+        # Tra cứu qua dictionary profiles nếu khớp UUID thật
         if val_str in uuid_to_name:
             return uuid_to_name[val_str]
+            
         return val_str
 
     if 'assigned_to' in df_proj.columns:
@@ -55,7 +74,7 @@ if projects_data:
     else:
         df_proj['staff_name'] = "Chưa phân công"
     
-    # 2. Thay thế toàn bộ các giá trị NaN/None/NaT trong toàn bộ DataFrame thành chuỗi rỗng hoặc giá trị hiển thị đẹp mắt
+    # Thay thế toàn bộ các giá trị NaN/None thành chuỗi rỗng
     df_proj = df_proj.fillna("")
 
     # Lọc theo từ khóa tìm kiếm nếu có
@@ -70,7 +89,7 @@ if projects_data:
 
     st.markdown("### 📋 Danh sách Công trình (Click vào dòng để xem & cập nhật chi tiết)")
 
-    # Chuẩn hóa DataFrame hiển thị đúng các cột và làm sạch NaN cuối cùng bằng .replace()
+    # Chuẩn hóa DataFrame hiển thị đúng các cột
     display_df = df_proj[[
         "project_code", 
         "project_name", 
@@ -87,7 +106,7 @@ if projects_data:
         "received_date": "Ngày nhận"
     }).fillna("Chưa cập nhật").replace("", "Chưa cập nhật")
 
-    # 4. BẢNG DỮ LIỆU TƯƠNG TÁC (Đã sạch bóng NaN)
+    # 4. BẢNG DỮ LIỆU TƯƠNG TÁC
     event = st.dataframe(
         display_df,
         width='stretch',
@@ -95,6 +114,7 @@ if projects_data:
         selection_mode="single-row",
         on_select="rerun"
     )
+    
     # 5. XỬ LÝ KHI CLICK CHỌN DÒNG
     selected_rows = event.selection.rows
     if selected_rows:
