@@ -81,32 +81,28 @@ def create_project_directly_from_email(
     project_name, 
     project_code, 
     category_id, 
-    assigned_to_uuid,  # Nhận tên nhân viên từ giao diện truyền lên
+    assigned_to_uuid,  # Đây chính là tên nhân sự truyền lên từ form (ví dụ: "Ms Hân", "Mr Thái",...)
     received_date, 
     due_date, 
     request_content, 
     status
 ):
-    """
-    Hàm khởi tạo dự án trực tiếp từ email với cơ chế tự động làm sạch dữ liệu,
-    tự động map nhân sự sang UUID và đồng bộ trạng thái email.
-    """
     try:
         # 1. Lấy organization_id mặc định
         org_res = supabase.table('organizations').select('id').limit(1).execute()
         org_id = org_res.data[0]['id'] if org_res.data else None
 
-        # 2. Tự động phân giải tên nhân sự thành UUID hợp lệ (Chống lỗi 22P02 & 23503)
-        valid_staff_id = resolve_staff_uuid(supabase, assigned_to_uuid)
+        # 2. Xử lý trực tiếp tên nhân sự (Lưu thẳng tên văn bản vào cột assigned_to đã là kiểu TEXT)
+        final_assigned_to = assigned_to_uuid if assigned_to_uuid and assigned_to_uuid != "Chưa phân nhân sự" else None
 
-        # 3. Payload dữ liệu dự án hoàn chỉnh, sạch sẽ
+        # 3. Payload dữ liệu dự án hoàn chỉnh
         project_payload = {
             "organization_id": org_id,
             "project_code": project_code if project_code else None,
             "project_name": project_name,
             "customer_name": customer_name,
             "category_id": category_id if category_id else None,
-            "assigned_to": valid_staff_id,  # Đã tự động đổi tên thành UUID chuẩn của CSDL
+            "assigned_to": final_assigned_to,  # Lưu thẳng tên nhân sự dạng text ("Ms Hân", "Mr Thái",...)
             "received_date": format_to_iso_date(received_date),
             "completed_date": format_to_iso_date(due_date),
             "status": status,
@@ -120,7 +116,7 @@ def create_project_directly_from_email(
         
         new_project_id = proj_res.data[0]['id']
 
-        # 5. Ghi vết liên kết vào bảng trung gian và cập nhật trạng thái email thành 'Đã giao'
+        # 5. Ghi vết liên kết và cập nhật trạng thái email thành 'Đã giao'
         if email_id:
             try:
                 supabase.table('project_emails').upsert({
