@@ -114,7 +114,7 @@ if emails_data:
                     st.warning("⚠️ Vui lòng nhập Tên khách hàng!")
                 else:
                     # Gọi hàm service tạo công trình trực tiếp lưu thẳng tên nhân sự dạng text
-                    from services.project_service import create_project_directly_from_email
+                    from modules.ai_processing.service import create_project_directly_from_email
                     
                     result = create_project_directly_from_email(
                         email_id=selected_email['id'],
