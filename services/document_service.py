@@ -7,21 +7,23 @@ SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 def get_all_project_documents():
-    """
-    Lấy toàn bộ danh sách hồ sơ từ bảng project_documents, 
-    kết hợp thông tin công trình (projects) và chi tiết file đính kèm (email_attachments).
-    """
     try:
         docs_res = supabase.table('project_documents').select('*').execute()
         docs_data = docs_res.data if docs_res.data else []
         if not docs_data:
             return []
 
-        proj_res = supabase.table('projects').select('id, project_code, project_name, customer_name').execute()
-        proj_map = {p['id']: p for p in (proj_res.data or [])}
+        try:
+            proj_res = supabase.table('projects').select('id, project_code, project_name, customer_name').execute()
+            proj_map = {p['id']: p for p in (proj_res.data or [])}
+        except Exception:
+            proj_map = {}
 
-        att_res = supabase.table('email_attachments').select('id, file_name, mime_type, storage_path, email_id').execute()
-        att_map = {a['id']: a for a in (att_res.data or [])}
+        try:
+            att_res = supabase.table('email_attachments').select('id, file_name, mime_type, storage_path, email_id').execute()
+            att_map = {a['id']: a for a in (att_res.data or [])}
+        except Exception:
+            att_map = {}
 
         enriched_docs = []
         for d in docs_data:
