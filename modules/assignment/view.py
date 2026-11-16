@@ -23,7 +23,8 @@ except Exception as e:
     projects_data = []
     uuid_to_name = {}
 
-STAFF_LIST = ["Ms Hân", "Mr Thái", "Mr Thịnh", "Ms Hương", "Ms Hiếu"]
+from services.project_service import get_active_staff_options
+STAFF_LIST = get_active_staff_options(include_unassigned=False)
 
 def get_clean_staff_name(val):
     if not val or pd.isna(val):
