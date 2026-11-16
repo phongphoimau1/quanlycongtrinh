@@ -1,66 +1,72 @@
 import streamlit as st
-from services.auth_service import (
-    authenticate_user,
-    get_default_staff_password,
-    ROLE_DISPLAY_MAP,
-)
-from services.admin_service import get_all_users, seed_default_staff_profiles
+from services.auth_service import authenticate_user, check_brute_force_lockout
 
-# CSS tùy chỉnh tạo khung Card đăng nhập hiện đại, sang trọng ở chính giữa màn hình
 st.markdown(
     """
     <style>
     .login-header {
         text-align: center;
-        padding-top: 1.5rem;
-        padding-bottom: 1rem;
+        padding-top: 2.5rem;
+        padding-bottom: 1.2rem;
     }
     .login-header h1 {
-        font-size: 2.1rem;
+        font-size: 2.0rem;
         font-weight: 800;
         margin-bottom: 0.3rem;
     }
     .login-sub {
         color: #9ca3af;
-        font-size: 0.98rem;
+        font-size: 0.95rem;
+    }
+    .security-footer {
+        text-align: center;
+        color: #6b7280;
+        font-size: 0.82rem;
+        margin-top: 1.2rem;
     }
     </style>
     """,
     unsafe_allow_html=True,
 )
 
-col_spacer_l, col_main, col_spacer_r = st.columns([1.2, 1.8, 1.2])
+col_spacer_l, col_main, col_spacer_r = st.columns([1.3, 1.4, 1.3])
 
 with col_main:
     st.markdown(
         """
         <div class="login-header">
             <h1>🏗️ HỆ THỐNG QUẢN LÝ CÔNG TRÌNH</h1>
-            <div class="login-sub">Nền tảng Điều phối Phối màu & Tự động hóa AI chuẩn Enterprise</div>
+            <div class="login-sub">Cổng Xác thực Nội bộ & Điều phối Phân quyền (RBAC)</div>
         </div>
         """,
         unsafe_allow_html=True,
     )
 
-    with st.container(border=True):
-        st.subheader("🔐 Đăng nhập Hệ thống")
+    is_locked, wait_sec = check_brute_force_lockout()
+    if is_locked:
+        st.error(f"🔒 Tạm khóa đăng nhập do nhập sai nhiều lần. Vui lòng thử lại sau **{wait_sec} giây**.")
 
-        with st.form("login_form", clear_on_submit=False):
+    with st.container(border=True):
+        st.subheader("🔐 Đăng nhập Tài khoản")
+
+        with st.form("secure_login_form", clear_on_submit=False):
             email_or_name = st.text_input(
-                "📧 Email hoặc Tên nhân sự",
-                placeholder="VD: admin@congtrinh.vn, han@congtrinh.vn hoặc Ms Hân...",
+                "📧 Email công việc",
+                placeholder="Nhập địa chỉ email của bạn...",
+                disabled=is_locked,
             )
             password = st.text_input(
                 "🔑 Mật khẩu",
                 type="password",
-                placeholder="Nhập mật khẩu đăng nhập...",
+                placeholder="Nhập mật khẩu bảo mật...",
+                disabled=is_locked,
             )
-            remember = st.checkbox("Ghi nhớ phiên đăng nhập trên trình duyệt này", value=True)
 
             btn_login = st.form_submit_button(
-                "🚀 Đăng nhập vào Workspace",
+                "🚀 Đăng nhập Hệ thống",
                 type="primary",
                 width="stretch",
+                disabled=is_locked,
             )
 
             if btn_login:
@@ -68,54 +74,17 @@ with col_main:
                 if res["success"]:
                     st.session_state["authenticated"] = True
                     st.session_state["auth_user"] = res["user"]
-                    st.toast(res["message"], icon="🎉")
+                    st.toast(res["message"], icon="🔓")
                     st.rerun()
                 else:
                     st.error(res["message"])
 
-    # Khay truy cập nhanh & thông tin tài khoản dành cho Kiểm thử / Triển khai nội bộ
-    with st.expander("⚡ Đăng nhập Nhanh & Kiểm thử Phân quyền (Quick Access)", expanded=True):
-        users_in_db = get_all_users()
-        default_pw = get_default_staff_password()
-
-        st.caption(
-            f"💡 **Mật khẩu mặc định:** Tài khoản Admin tối cao là `admin@congtrinh.vn` / `admin123`. "
-            f"Các nhân sự trong bảng `profiles` có mật khẩu mặc định là `{default_pw}`."
-        )
-
-        q1, q2 = st.columns(2)
-        with q1:
-            if st.button("👑 Vào nhanh bằng quyền Admin", width="stretch"):
-                res = authenticate_user("admin@congtrinh.vn", "admin123")
-                if res["success"]:
-                    st.session_state["authenticated"] = True
-                    st.session_state["auth_user"] = res["user"]
-                    st.rerun()
-
-        with q2:
-            if users_in_db:
-                user_options = {
-                    f"{u.get('full_name')} ({u.get('role', 'staff')})": u
-                    for u in users_in_db
-                    if u.get("is_active", True) is not False
-                }
-                chosen_label = st.selectbox(
-                    "Chọn nhân sự có sẵn để test:",
-                    list(user_options.keys()),
-                    label_visibility="collapsed",
-                )
-                if st.button(f"👷 Đăng nhập: {chosen_label.split('(')[0].strip()}", width="stretch"):
-                    chosen_u = user_options[chosen_label]
-                    res = authenticate_user(chosen_u.get("email") or chosen_u.get("full_name"), default_pw)
-                    if res["success"]:
-                        st.session_state["authenticated"] = True
-                        st.session_state["auth_user"] = res["user"]
-                        st.rerun()
-            else:
-                if st.button("🔄 Khởi tạo 5 Nhân sự chuẩn vào DB", width="stretch"):
-                    seed_res = seed_default_staff_profiles()
-                    if seed_res["success"]:
-                        st.success(seed_res["message"])
-                        st.rerun()
-                    else:
-                        st.warning(seed_res["message"])
+    st.markdown(
+        """
+        <div class="security-footer">
+            🛡️ Phiên làm việc được bảo vệ bằng mã hóa SHA-256 & Nhật ký Audit Logs.<br>
+            Nếu quên mật khẩu, vui lòng liên hệ Quản trị viên hệ thống để được cấp lại.
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
