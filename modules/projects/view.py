@@ -18,13 +18,15 @@ with col_t2:
     if st.button("➕ Tạo công trình", type="primary", width='stretch'):
         st.switch_page("modules/projects/create.py")
 
-# 3. Lấy danh sách công trình và profiles để ánh xạ ngược
+# 3. Lấy danh sách công trình và profiles để ánh xạ ngược UUID -> Tên nhân viên
 try:
     projects_data = get_all_projects() 
     
+    # Truy vấn bảng profiles để lấy danh sách ánh xạ id -> full_name
     profiles_res = supabase.table('profiles').select('id, full_name, email').execute()
     profiles_list = profiles_res.data if profiles_res.data else []
     
+    # Tạo dictionary dịch ngược: UUID hoặc chuỗi ID -> Tên nhân viên
     uuid_to_name = {}
     for p in profiles_list:
         p_id = str(p.get('id'))
@@ -39,20 +41,13 @@ except Exception as e:
 if projects_data:
     df_proj = pd.DataFrame(projects_data)
     
-    # Hàm ánh xạ thông minh chống lỗi dữ liệu cũ (Legacy data)
+    # 1. Xử lý an toàn cột nhân sự phụ trách, loại bỏ hoàn toàn khả năng sinh ra NaN
     def get_staff_display_name(val):
         if not val or pd.isna(val):
             return "Chưa phân công"
-        
         val_str = str(val).strip()
-        if not val_str or val_str.lower() in ["none", "nan", "null"]:
-            return "Chưa phân công"
-            
-        # Nếu là UUID trong hệ thống profiles -> Dịch sang tên
         if val_str in uuid_to_name:
             return uuid_to_name[val_str]
-            
-        # Nếu đã là tên nhân sự (Ms Hân, Mr Thái,...) -> Giữ nguyên
         return val_str
 
     if 'assigned_to' in df_proj.columns:
@@ -60,7 +55,7 @@ if projects_data:
     else:
         df_proj['staff_name'] = "Chưa phân công"
     
-    # Làm sạch toàn bộ DataFrame tránh lỗi NaN hiển thị trên giao diện
+    # 2. Thay thế toàn bộ các giá trị NaN/None/NaT trong toàn bộ DataFrame thành chuỗi rỗng hoặc giá trị hiển thị đẹp mắt
     df_proj = df_proj.fillna("")
 
     # Lọc theo từ khóa tìm kiếm nếu có
@@ -75,7 +70,7 @@ if projects_data:
 
     st.markdown("### 📋 Danh sách Công trình (Click vào dòng để xem & cập nhật chi tiết)")
 
-    # Chuẩn hóa DataFrame hiển thị đúng các cột
+    # Chuẩn hóa DataFrame hiển thị đúng các cột và làm sạch NaN cuối cùng bằng .replace()
     display_df = df_proj[[
         "project_code", 
         "project_name", 
@@ -92,7 +87,7 @@ if projects_data:
         "received_date": "Ngày nhận"
     }).fillna("Chưa cập nhật").replace("", "Chưa cập nhật")
 
-    # 4. BẢNG DỮ LIỆU TƯƠNG TÁC
+    # 4. BẢNG DỮ LIỆU TƯƠNG TÁC (Đã sạch bóng NaN)
     event = st.dataframe(
         display_df,
         width='stretch',
@@ -100,7 +95,6 @@ if projects_data:
         selection_mode="single-row",
         on_select="rerun"
     )
-
     # 5. XỬ LÝ KHI CLICK CHỌN DÒNG
     selected_rows = event.selection.rows
     if selected_rows:
