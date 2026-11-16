@@ -28,6 +28,17 @@ def map_staff(val):
     val_str = str(val).strip()
     if not val_str or val_str.lower() in ["none", "nan", "null", "chưa phân nhân sự"]:
         return "Chưa phân công"
+    val_lower = val_str.lower()
+    if "11111111" in val_str or "hân" in val_lower:
+        return "Ms Hân"
+    elif "22222222" in val_str or "thái" in val_lower:
+        return "Mr Thái"
+    elif "33333333" in val_str or "thịnh" in val_lower:
+        return "Mr Thịnh"
+    elif "44444444" in val_str or "hương" in val_lower:
+        return "Ms Hương"
+    elif "55555555" in val_str or "hiếu" in val_lower:
+        return "Ms Hiếu"
     return uuid_to_name.get(val_str, val_str)
 
 if projects_data:
@@ -35,15 +46,18 @@ if projects_data:
     df['staff_name'] = df['assigned_to'].apply(map_staff) if 'assigned_to' in df.columns else "Chưa phân công"
     df['status'] = df.get('status', 'Mới tiếp nhận').fillna("Mới tiếp nhận").replace("", "Mới tiếp nhận")
 
-    # Chuẩn hóa cột thời gian để lọc theo Tháng và Năm
-    date_col = 'received_date' if 'received_date' in df.columns else 'created_at'
-    df['parsed_date'] = pd.to_datetime(df[date_col], errors='coerce')
-    # Nếu ngày nhận bị trống, fallback sang created_at
-    if 'created_at' in df.columns:
-        df['parsed_date'] = df['parsed_date'].fillna(pd.to_datetime(df['created_at'], errors='coerce'))
+    # Chuẩn hóa cột thời gian an toàn: đồng bộ utc=True để tránh xung đột giữa date và timestamptz
+    rec_series = pd.to_datetime(df['received_date'], errors='coerce', utc=True) if 'received_date' in df.columns else pd.Series([pd.NaT] * len(df), dtype='datetime64[ns, UTC]')
+    cre_series = pd.to_datetime(df['created_at'], errors='coerce', utc=True) if 'created_at' in df.columns else pd.Series([pd.NaT] * len(df), dtype='datetime64[ns, UTC]')
+    
+    # Hợp nhất và ép kiểu datetime64 đồng nhất
+    df['parsed_date'] = pd.to_datetime(rec_series.fillna(cre_series), errors='coerce', utc=True)
 
-    df['year'] = df['parsed_date'].dt.year.fillna(datetime.now().year).astype(int)
-    df['month'] = df['parsed_date'].dt.month.fillna(datetime.now().month).astype(int)
+    current_year = datetime.now().year
+    current_month = datetime.now().month
+
+    df['year'] = df['parsed_date'].dt.year.fillna(current_year).astype(int)
+    df['month'] = df['parsed_date'].dt.month.fillna(current_month).astype(int)
 
     tab_month, tab_year, tab_staff = st.tabs([
         "📅 Báo cáo Tháng",
@@ -56,9 +70,11 @@ if projects_data:
         c1, c2 = st.columns(2)
         with c1:
             available_years = sorted(df['year'].unique().tolist(), reverse=True)
+            if not available_years:
+                available_years = [current_year]
             sel_year = st.selectbox("Chọn Năm", available_years, key="m_year")
         with c2:
-            sel_month = st.selectbox("Chọn Tháng", list(range(1, 13)), index=datetime.now().month - 1, key="m_month")
+            sel_month = st.selectbox("Chọn Tháng", list(range(1, 13)), index=current_month - 1, key="m_month")
 
         df_m = df[(df['year'] == sel_year) & (df['month'] == sel_month)]
 
@@ -81,6 +97,10 @@ if projects_data:
             with ch2:
                 st.bar_chart(df_m['staff_name'].value_counts())
 
+            for col_req in ["project_code", "project_name", "customer_name", "staff_name", "status", "received_date"]:
+                if col_req not in df_m.columns:
+                    df_m[col_req] = ""
+
             st.dataframe(
                 df_m[["project_code", "project_name", "customer_name", "staff_name", "status", "received_date"]].rename(columns={
                     "project_code": "Mã CT",
@@ -89,7 +109,7 @@ if projects_data:
                     "staff_name": "Nhân viên phụ trách",
                     "status": "Trạng thái",
                     "received_date": "Ngày nhận"
-                }).fillna("Chưa cập nhật"),
+                }).fillna("Chưa cập nhật").replace("", "Chưa cập nhật"),
                 width='stretch',
                 hide_index=True
             )
@@ -113,7 +133,10 @@ if projects_data:
         if not df_y.empty:
             st.markdown(f"#### Biểu đồ Sản lượng Công trình qua 12 tháng ({sel_y})")
             monthly_counts = df_y.groupby('month').size().reindex(range(1, 13), fill_value=0)
-            monthly_df = pd.DataFrame({"Tháng": [f"T{m}" for m in range(1, 13)], "Số lượng CT": monthly_counts.values}).set_index("Tháng")
+            monthly_df = pd.DataFrame({
+                "Tháng": [f"T{m:02d}" for m in range(1, 13)],
+                "Số lượng CT": monthly_counts.values
+            }).set_index("Tháng")
             st.bar_chart(monthly_df)
 
     # --- TAB 3: HIỆU SUẤT NHÂN VIÊN ---
