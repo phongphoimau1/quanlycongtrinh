@@ -101,7 +101,8 @@ if emails_data:
                 due_date = st.date_input("Ngày đến hạn hoàn thành")
 
             # Danh sách nhân sự chuẩn xác khớp tuyệt đối với hệ thống
-            staff_options = ["Chưa phân nhân sự", "Ms Hân", "Mr Thái", "Mr Thịnh", "Ms Hương", "Ms Hiếu"]
+            from services.project_service import get_active_staff_options
+            staff_options = get_active_staff_options(include_unassigned=True, unassigned_label="Chưa phân nhân sự")
             staff_name = st.selectbox("Giao cho nhân viên phụ trách", staff_options)
 
             status = st.selectbox("Trạng thái công trình", ["Đang thực hiện", "Đã hoàn thành", "Tạm dừng"])
