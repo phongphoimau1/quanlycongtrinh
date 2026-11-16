@@ -1,120 +1,349 @@
+from datetime import datetime, date
 import streamlit as st
 import pandas as pd
-from services.project_service import get_all_projects
-from supabase import create_client
+from services.project_service import (
+    get_all_projects,
+    get_active_staff_options,
+    get_staff_uuid_map,
+    _resolve_display_staff_name,
+    normalize_status_display,
+    bulk_update_projects_inline,
+    update_project_status,
+    PROJECT_STATUSES,
+)
 
-SUPABASE_URL = st.secrets["SUPABASE_URL"]
-SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
-supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+st.title("🏗️ Quản lý & Điều phối Công trình (Smart Workspace)")
 
-st.title("🏗️ Quản lý Công trình")
+# 1. Lấy danh sách nhân sự động từ bảng profiles + ánh xạ UUID
+DYNAMIC_STAFF_OPTIONS = get_active_staff_options(include_unassigned=True, unassigned_label="Chưa phân công")
+UUID_MAP = get_staff_uuid_map()
 
-# 1. Thanh tìm kiếm
-search = st.text_input("🔍 Tìm kiếm công trình (Nhập tên, mã hoặc khách hàng)...", placeholder="Nhập từ khóa...")
 
-# 2. Nút tạo công trình mới
-col_t1, col_t2 = st.columns([5, 1])
-with col_t2:
-    if st.button("➕ Tạo công trình", type="primary", width='stretch'):
-        st.switch_page("modules/projects/create.py")
+# 2. Hộp thoại Popup (Modal Dialog) xem & cập nhật sâu công trình ngay trên màn hình
+@st.dialog("🔍 Chi tiết & Cập nhật Công trình", width="large")
+def open_project_quick_modal(proj_row):
+    p_code = proj_row.get("project_code", "N/A")
+    st.markdown(f"### 🏗️ `{p_code}` — {proj_row.get('project_name', '')}")
 
-# 3. Lấy danh sách công trình và profiles từ CSDL và thực hiện Left Join chuẩn quan hệ
-try:
-    # Lấy danh sách projects
-    projects_data = get_all_projects() 
-    
-    # Lấy trực tiếp danh sách profiles để ánh xạ quan hệ khóa ngoại assigned_to -> profiles.id
-    profiles_res = supabase.table('profiles').select('id, full_name, email').execute()
-    profiles_data = profiles_res.data if profiles_res.data else []
+    with st.form(f"modal_form_{proj_row.get('id')}"):
+        c1, c2 = st.columns(2)
+        with c1:
+            ed_name = st.text_input("Tên công trình", value=proj_row.get("project_name", ""))
+            ed_cust = st.text_input("Khách hàng", value=proj_row.get("customer_name", ""))
+            curr_staff = proj_row.get("staff_name", "Chưa phân công")
+            staff_choices = list(DYNAMIC_STAFF_OPTIONS)
+            if curr_staff not in staff_choices:
+                staff_choices.append(curr_staff)
+            ed_staff = st.selectbox(
+                "Nhân viên phụ trách",
+                staff_choices,
+                index=staff_choices.index(curr_staff),
+            )
+        with c2:
+            curr_st = proj_row.get("status", "Đang thực hiện")
+            st_choices = list(PROJECT_STATUSES)
+            if curr_st not in st_choices:
+                st_choices.append(curr_st)
+            ed_status = st.selectbox(
+                "Trạng thái công trình",
+                st_choices,
+                index=st_choices.index(curr_st),
+            )
+            ed_due = st.text_input(
+                "Hạn hoàn thành (YYYY-MM-DD)",
+                value=str(proj_row.get("due_date") or "")[:10],
+            )
+            ed_rec = st.text_input(
+                "Ngày tiếp nhận",
+                value=str(proj_row.get("received_date") or "")[:10],
+                disabled=True,
+            )
 
-except Exception as e:
-    st.error(f"❌ Lỗi tải dữ liệu CSDL: {e}")
-    projects_data = []
-    profiles_data = []
+        ed_req = st.text_area(
+            "Nội dung yêu cầu / Ghi chú kỹ thuật",
+            value=str(proj_row.get("request_content") or ""),
+            height=110,
+        )
+        ed_note = st.text_input(
+            "Ghi chú nhật ký tiến độ lần này",
+            placeholder="VD: Đã giao nhân sự xử lý phương án phối màu...",
+        )
+
+        col_b1, col_b2 = st.columns(2)
+        with col_b1:
+            btn_save_modal = st.form_submit_button("💾 Lưu Cập nhật", type="primary", width="stretch")
+        with col_b2:
+            btn_open_full = st.form_submit_button("🚀 Mở Trang Hồ sơ Chi tiết", width="stretch")
+
+        if btn_save_modal:
+            ok = update_project_status(
+                project_code_or_id=proj_row.get("id") or p_code,
+                new_status=ed_status,
+                note=ed_note or f"Cập nhật từ hộp thoại nhanh ({ed_staff})",
+                assigned_to=ed_staff,
+                due_date=ed_due if ed_due else None,
+                project_name=ed_name,
+                customer_name=ed_cust,
+                request_content=ed_req,
+            )
+            if ok:
+                st.toast(f"✅ Đã cập nhật công trình {p_code}!", icon="🎉")
+                st.rerun()
+            else:
+                st.error("❌ Không thể lưu thay đổi.")
+
+        if btn_open_full:
+            st.session_state["selected_project_code"] = p_code
+            st.switch_page("modules/projects/detail.py")
+
+
+# 3. Tải dữ liệu Công trình và tính toán Cảnh báo SLA / Trễ hạn
+projects_data = get_all_projects()
 
 if projects_data:
     df_proj = pd.DataFrame(projects_data)
-    df_prof = pd.DataFrame(profiles_data) if profiles_data else pd.DataFrame(columns=['id', 'full_name', 'email'])
 
-    # Chuẩn hóa cột tên nhân viên từ bảng profiles
-    if not df_prof.empty and 'id' in df_prof.columns:
-        df_prof['staff_display_name'] = df_prof['full_name'].fillna(df_prof['email']).fillna("Chưa rõ")
-        # Đổi tên cột id thành assigned_to để chuẩn bị merge
-        df_prof = df_prof.rename(columns={'id': 'profile_id'})
-    else:
-        df_prof['profile_id'] = []
-        df_prof['staff_display_name'] = []
+    df_proj["staff_name"] = (
+        df_proj["assigned_to"].apply(lambda x: _resolve_display_staff_name(x, UUID_MAP))
+        if "assigned_to" in df_proj.columns
+        else "Chưa phân công"
+    )
+    df_proj["status"] = (
+        df_proj["status"].apply(normalize_status_display)
+        if "status" in df_proj.columns
+        else "Đang thực hiện"
+    )
 
-    # Thực hiện Left Join giữa projects và profiles dựa trên mối quan hệ assigned_to = profiles.id
-    if 'assigned_to' in df_proj.columns and not df_prof.empty:
-        df_proj = pd.merge(
-            df_proj, 
-            df_prof[['profile_id', 'staff_display_name']], 
-            left_on='assigned_to', 
-            right_on='profile_id', 
-            how='left'
-        )
-        # Gán tên nhân sự, nếu không khớp hoặc trống thì hiển thị "Chưa phân công"
-        df_proj['staff_name'] = df_proj['staff_display_name'].fillna("Chưa phân công")
-    else:
-        # Trường hợp dữ liệu cũ lưu trực tiếp dạng chuỗi tên hoặc chưa có profile
-        def fallback_name(val):
-            if not val or pd.isna(val) or str(val).lower() in ["none", "nan", "null"]:
-                return "Chưa phân công"
-            return str(val)
-        df_proj['staff_name'] = df_proj['assigned_to'].apply(fallback_name) if 'assigned_to' in df_proj.columns else "Chưa phân công"
+    for col_needed in ["project_code", "project_name", "customer_name", "received_date", "due_date", "completed_date", "request_content"]:
+        if col_needed not in df_proj.columns:
+            df_proj[col_needed] = ""
 
-    # Làm sạch toàn bộ DataFrame tránh lỗi NaN hiển thị trên giao diện
     df_proj = df_proj.fillna("")
 
-    # Lọc theo từ khóa tìm kiếm nếu có
+    # Tính toán nhãn Cảnh báo SLA tự động cho từng công trình
+    today_str = date.today().strftime("%Y-%m-%d")
+
+    def compute_sla_badge(row):
+        st_val = str(row.get("status", ""))
+        sf_val = str(row.get("staff_name", ""))
+        due_val = str(row.get("due_date", ""))[:10]
+
+        if st_val == "Hoàn thành":
+            return "✅ Hoàn tất"
+        if st_val == "Tạm dừng":
+            return "⏸️ Tạm dừng"
+        if sf_val == "Chưa phân công":
+            return "🚨 Chưa giao việc"
+        if due_val and len(due_val) == 10:
+            if due_val < today_str:
+                return "🔥 Quá hạn"
+            elif due_val == today_str:
+                return "⏳ Hạn hôm nay"
+        if st_val == "Cần chỉnh sửa":
+            return "🛠️ Cần sửa lại"
+        return "🟢 Đang chạy"
+
+    df_proj["sla_badge"] = df_proj.apply(compute_sla_badge, axis=1)
+
+    # 4. Thanh KPI Cảnh báo Nhanh
+    total_cnt = len(df_proj)
+    unassigned_cnt = len(df_proj[df_proj["staff_name"] == "Chưa phân công"])
+    overdue_cnt = len(df_proj[df_proj["sla_badge"] == "🔥 Quá hạn"])
+    doing_cnt = len(df_proj[df_proj["status"].isin(["Đang thực hiện", "Mới tiếp nhận", "Chờ khách duyệt", "Cần chỉnh sửa"])])
+    done_cnt = len(df_proj[df_proj["status"] == "Hoàn thành"])
+
+    k1, k2, k3, k4, k5 = st.columns(5)
+    k1.metric("🏗️ Tổng Công trình", total_cnt)
+    k2.metric("🚨 Chưa phân công", unassigned_cnt)
+    k3.metric("🔥 Quá hạn (Overdue)", overdue_cnt)
+    k4.metric("⚡ Đang triển khai", doing_cnt)
+    k5.metric("✅ Đã hoàn thành", done_cnt)
+
+    st.divider()
+
+    # 5. Bộ lọc đa chiều & Thanh công cụ
+    f1, f2, f3, f4, f5 = st.columns([2.2, 1.3, 1.3, 1.2, 1])
+    with f1:
+        search = st.text_input(
+            "🔍 Tìm nhanh (Mã CT, Tên công trình, Khách hàng)...",
+            placeholder="Nhập từ khóa...",
+        )
+    with f2:
+        staff_filter = st.selectbox("👤 Lọc Nhân viên", ["Tất cả"] + DYNAMIC_STAFF_OPTIONS)
+    with f3:
+        status_filter = st.selectbox("📌 Lọc Trạng thái", ["Tất cả"] + PROJECT_STATUSES)
+    with f4:
+        sla_filter = st.selectbox(
+            "🚦 Lọc Cảnh báo SLA",
+            ["Tất cả", "🚨 Chưa giao việc", "🔥 Quá hạn", "⏳ Hạn hôm nay", "🛠️ Cần sửa lại", "🟢 Đang chạy", "✅ Hoàn tất"],
+        )
+    with f5:
+        st.write("")
+        st.write("")
+        if st.button("➕ Tạo CT Mới", type="primary", width="stretch"):
+            st.switch_page("modules/projects/create.py")
+
+    df_view = df_proj.copy()
+    if staff_filter != "Tất cả":
+        df_view = df_view[df_view["staff_name"] == staff_filter]
+    if status_filter != "Tất cả":
+        df_view = df_view[df_view["status"] == status_filter]
+    if sla_filter != "Tất cả":
+        df_view = df_view[df_view["sla_badge"] == sla_filter]
     if search:
-        keyword = search.lower()
-        df_proj = df_proj[
-            df_proj['project_name'].astype(str).str.lower().str.contains(keyword, na=False) |
-            df_proj['project_code'].astype(str).str.lower().str.contains(keyword, na=False) |
-            df_proj['customer_name'].astype(str).str.lower().str.contains(keyword, na=False) |
-            df_proj['staff_name'].astype(str).str.lower().str.contains(keyword, na=False)
+        kw = search.lower().strip()
+        df_view = df_view[
+            df_view["project_name"].astype(str).str.lower().str.contains(kw, na=False)
+            | df_view["project_code"].astype(str).str.lower().str.contains(kw, na=False)
+            | df_view["customer_name"].astype(str).str.lower().str.contains(kw, na=False)
+            | df_view["staff_name"].astype(str).str.lower().str.contains(kw, na=False)
         ]
 
-    st.markdown("### 📋 Danh sách Công trình (Click vào dòng để xem & cập nhật chi tiết)")
+    # Đảm bảo mọi giá trị đang có trong dữ liệu đều nằm trong options của SelectboxColumn
+    all_staff_in_df = list(DYNAMIC_STAFF_OPTIONS)
+    for sv in df_view["staff_name"].unique():
+        if sv and sv not in all_staff_in_df:
+            all_staff_in_df.append(sv)
 
-    # Chuẩn hóa DataFrame hiển thị đúng các cột
-    display_df = df_proj[[
-        "project_code", 
-        "project_name", 
-        "customer_name", 
-        "staff_name", 
-        "status", 
-        "received_date"
-    ]].rename(columns={
-        "project_code": "Mã CT",
-        "project_name": "Tên công trình",
-        "customer_name": "Khách hàng",
-        "staff_name": "Nhân viên phụ trách", 
-        "status": "Trạng thái",
-        "received_date": "Ngày nhận"
-    }).fillna("Chưa cập nhật").replace("", "Chưa cập nhật")
+    all_status_in_df = list(PROJECT_STATUSES)
+    for stv in df_view["status"].unique():
+        if stv and stv not in all_status_in_df:
+            all_status_in_df.append(stv)
 
-    # 4. BẢNG DỮ LIỆU TƯƠNG TÁC
-    event = st.dataframe(
-        display_df,
-        width='stretch',
+    # 6. BẢNG SỬA TRỰC TIẾP NHƯ EXCEL (st.data_editor)
+    col_hdr1, col_hdr2 = st.columns([3, 1])
+    with col_hdr1:
+        st.markdown(
+            f"### 📋 Bảng Điều phối Trực tiếp ({len(df_view)} công trình) "
+            "— *Click đúp vào ô **Nhân viên** hoặc **Trạng thái** để đổi ngay*"
+        )
+    with col_hdr2:
+        auto_save = st.toggle("⚡ Tự động lưu ngay khi đổi ô", value=True)
+
+    editor_source_df = df_view[
+        [
+            "id",
+            "sla_badge",
+            "project_code",
+            "project_name",
+            "customer_name",
+            "staff_name",
+            "status",
+            "received_date",
+            "due_date",
+        ]
+    ].copy()
+    editor_source_df["received_date"] = editor_source_df["received_date"].astype(str).str[:10].replace("", "Chưa cập nhật")
+    editor_source_df["due_date"] = editor_source_df["due_date"].astype(str).str[:10]
+
+    edited_df = st.data_editor(
+        editor_source_df,
+        key="projects_inline_editor",
+        width="stretch",
         hide_index=True,
-        selection_mode="single-row",
-        on_select="rerun"
+        num_rows="fixed",
+        disabled=["id", "sla_badge", "project_code", "received_date"],
+        column_order=[
+            "sla_badge",
+            "project_code",
+            "project_name",
+            "customer_name",
+            "staff_name",
+            "status",
+            "received_date",
+            "due_date",
+        ],
+        column_config={
+            "sla_badge": st.column_config.TextColumn("🚦 Cảnh báo SLA", width="small"),
+            "project_code": st.column_config.TextColumn("Mã CT", width="small"),
+            "project_name": st.column_config.TextColumn("Tên công trình (Sửa trực tiếp)", width="large"),
+            "customer_name": st.column_config.TextColumn("Khách hàng", width="medium"),
+            "staff_name": st.column_config.SelectboxColumn(
+                "👤 Nhân viên phụ trách",
+                help="Click để chọn nhân viên phụ trách (Danh sách tự động đồng bộ từ mục Quản trị)",
+                options=all_staff_in_df,
+                required=True,
+                width="medium",
+            ),
+            "status": st.column_config.SelectboxColumn(
+                "📌 Trạng thái",
+                help="Click để đổi nhanh trạng thái công trình",
+                options=all_status_in_df,
+                required=True,
+                width="medium",
+            ),
+            "received_date": st.column_config.TextColumn("Ngày nhận", width="small"),
+            "due_date": st.column_config.TextColumn("Hạn hoàn thành (YYYY-MM-DD)", width="small"),
+        },
     )
-    
-    # 5. XỬ LÝ KHI CLICK CHỌN DÒNG
-    selected_rows = event.selection.rows
-    if selected_rows:
-        selected_index = selected_rows[0]
-        selected_row_data = df_proj.iloc[selected_index]
-        proj_code = selected_row_data.get('project_code')
-        
-        if proj_code:
-            st.session_state["selected_project_code"] = proj_code
-            st.toast(f"Đang mở chi tiết công trình: {proj_code}", icon="🚀")
-            st.switch_page("modules/projects/detail.py") 
+
+    # Phát hiện các dòng vừa được chỉnh sửa trên bảng
+    changed_rows = []
+    for idx in range(len(editor_source_df)):
+        orig = editor_source_df.iloc[idx]
+        curr = edited_df.iloc[idx]
+        if (
+            orig["staff_name"] != curr["staff_name"]
+            or orig["status"] != curr["status"]
+            or orig["project_name"] != curr["project_name"]
+            or orig["customer_name"] != curr["customer_name"]
+            or orig["due_date"] != curr["due_date"]
+        ):
+            changed_rows.append(
+                {
+                    "id": orig["id"],
+                    "project_code": orig["project_code"],
+                    "project_name": curr["project_name"],
+                    "customer_name": curr["customer_name"],
+                    "staff_name": curr["staff_name"],
+                    "old_status": orig["status"],
+                    "status": curr["status"],
+                    "due_date": curr["due_date"] if curr["due_date"] else None,
+                }
+            )
+
+    if changed_rows:
+        if auto_save:
+            res = bulk_update_projects_inline(changed_rows)
+            if res["success"]:
+                st.toast(res["message"], icon="✅")
+                st.rerun()
+            else:
+                st.error(res["message"])
+        else:
+            st.warning(f"✏️ Bạn vừa thay đổi **{len(changed_rows)} dòng** trên bảng. Nhấn nút bên dưới để lưu xuống CSDL:")
+            if st.button(f"💾 Lưu {len(changed_rows)} thay đổi xuống CSDL ngay", type="primary"):
+                res = bulk_update_projects_inline(changed_rows)
+                if res["success"]:
+                    st.success(res["message"])
+                    st.rerun()
+                else:
+                    st.error(res["message"])
+
+    # 7. Thanh Truy cập Nhanh Hồ sơ Chi tiết / Mở Popup (Không cần cuộn xa)
+    st.divider()
+    q_col1, q_col2, q_col3 = st.columns([3, 1, 1])
+    proj_lookup = {
+        f"{r['project_code']} — {r['project_name']} ({r['staff_name']})": r
+        for _, r in df_view.iterrows()
+    }
+    with q_col1:
+        selected_label = st.selectbox(
+            "🔍 Chọn nhanh công trình để mở Cửa sổ Chi tiết hoặc Hồ sơ:",
+            list(proj_lookup.keys()) if proj_lookup else ["Không có công trình"],
+        )
+    with q_col2:
+        st.write("")
+        st.write("")
+        if st.button("🪟 Xem / Sửa Nhanh (Popup)", width="stretch", disabled=not proj_lookup):
+            open_project_quick_modal(proj_lookup[selected_label])
+    with q_col3:
+        st.write("")
+        st.write("")
+        if st.button("🚀 Mở Trang Chi tiết", type="primary", width="stretch", disabled=not proj_lookup):
+            chosen_row = proj_lookup[selected_label]
+            st.session_state["selected_project_code"] = chosen_row["project_code"]
+            st.switch_page("modules/projects/detail.py")
+
 else:
     st.info("📭 Chưa có công trình nào trên hệ thống.")
