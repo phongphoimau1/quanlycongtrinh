@@ -68,15 +68,17 @@ def resolve_staff_assignment(supabase_client, staff_input):
 
     return val_str
 
-def _resolve_display_staff_name(assigned_val):
+def _resolve_display_staff_name(assigned_val, uuid_map=None):
     """
-    Hàm phụ trợ dịch ngược từ UUID hoặc mã giả lập sang tên hiển thị nhân viên cho trang detail.py.
+    Dịch ngược từ UUID hoặc mã giả lập sang tên hiển thị nhân viên.
     """
     if not assigned_val:
         return "Chưa phân công"
     val_str = str(assigned_val).strip()
-    val_lower = val_str.lower()
+    if not val_str or val_str.lower() in ["none", "nan", "null", "chưa phân nhân sự"]:
+        return "Chưa phân công"
 
+    val_lower = val_str.lower()
     if "11111111" in val_str or "hân" in val_lower:
         return "Ms Hân"
     elif "22222222" in val_str or "thái" in val_lower:
@@ -87,6 +89,9 @@ def _resolve_display_staff_name(assigned_val):
         return "Ms Hương"
     elif "55555555" in val_str or "hiếu" in val_lower:
         return "Ms Hiếu"
+
+    if uuid_map and val_str in uuid_map:
+        return uuid_map[val_str]
 
     try:
         res = supabase.table('profiles').select('id, full_name, email').eq('id', val_str).limit(1).execute()
@@ -100,7 +105,115 @@ def _resolve_display_staff_name(assigned_val):
 
 
 # ==============================================================================
-# 2. CÁC HÀM TRUY VẤN & CẬP NHẬT CÔNG TRÌNH (DÙNG CHO VIEW.PY, DETAIL.PY, CREATE.PY)
+# 2. HÀM THỐNG KÊ DASHBOARD (DÙNG CHO MODULES/DASHBOARD/VIEW.PY)
+# ==============================================================================
+
+class SafeStatsDict(dict):
+    """
+    Dictionary thông minh cho Dashboard: nếu giao diện truy cập một key bất kỳ 
+    bằng stats['ten_key'] mà chưa được khai báo, tự động trả về 0 thay vì báo lỗi KeyError.
+    """
+    def __missing__(self, key):
+        return 0
+
+def get_dashboard_stats():
+    """
+    Tổng hợp toàn bộ số liệu thống kê cho trang Dashboard tổng quan.
+    Cung cấp đầy đủ các biến phổ biến để tương thích với modules/dashboard/view.py.
+    """
+    try:
+        projects = get_all_projects()
+        
+        try:
+            prof_res = supabase.table('profiles').select('id, full_name, email').execute()
+            uuid_map = {str(p['id']): (p.get('full_name') or p.get('email') or "Chưa rõ") for p in (prof_res.data or [])}
+        except Exception:
+            uuid_map = {}
+
+        for p in projects:
+            p['staff_name'] = _resolve_display_staff_name(p.get('assigned_to'), uuid_map)
+
+        total = len(projects)
+        completed = sum(1 for p in projects if p.get('status') in ['Hoàn thành', 'Đã hoàn thành', 'Completed', 'Done'])
+        in_progress = sum(1 for p in projects if p.get('status') in ['Đang thực hiện', 'Đang xử lý', 'In Progress'])
+        new_proj = sum(1 for p in projects if p.get('status') in ['Mới tiếp nhận', 'Chưa xử lý', 'Mới', 'New'])
+        paused = sum(1 for p in projects if p.get('status') in ['Tạm dừng', 'Pending', 'On Hold'])
+        unassigned = sum(1 for p in projects if p.get('staff_name') == 'Chưa phân công')
+
+        # Thống kê số lượng email & hàng đợi chờ xác nhận
+        total_emails = 0
+        unprocessed_emails = 0
+        pending_confirmations = 0
+        try:
+            em_res = supabase.table('emails').select('id, processing_status').execute()
+            emails_data = em_res.data or []
+            total_emails = len(emails_data)
+            unprocessed_emails = sum(1 for e in emails_data if e.get('processing_status') in [None, '', 'Chưa xử lý', 'pending'])
+        except Exception:
+            pass
+
+        try:
+            cq_res = supabase.table('confirmation_queue').select('id, decision').execute()
+            cq_data = cq_res.data or []
+            pending_confirmations = sum(1 for c in cq_data if not c.get('decision') or c.get('decision') in ['pending', 'Chờ xác nhận'])
+        except Exception:
+            pass
+
+        # Gom nhóm theo trạng thái và nhân viên
+        by_status = {}
+        by_staff = {}
+        for p in projects:
+            st_val = p.get('status') or 'Đang thực hiện'
+            by_status[st_val] = by_status.get(st_val, 0) + 1
+            sf_val = p.get('staff_name') or 'Chưa phân công'
+            by_staff[sf_val] = by_staff.get(sf_val, 0) + 1
+
+        completion_rate = round((completed / total * 100), 1) if total > 0 else 0.0
+
+        return SafeStatsDict({
+            "total": total,
+            "total_projects": total,
+            "completed": completed,
+            "completed_projects": completed,
+            "done": completed,
+            "in_progress": in_progress,
+            "processing": in_progress,
+            "active_projects": in_progress,
+            "doing": in_progress,
+            "new": new_proj,
+            "new_projects": new_proj,
+            "pending": paused + new_proj,
+            "pending_projects": paused + new_proj,
+            "paused": paused,
+            "overdue": 0,
+            "overdue_projects": 0,
+            "unassigned": unassigned,
+            "unassigned_projects": unassigned,
+            "total_emails": total_emails,
+            "unprocessed_emails": unprocessed_emails,
+            "pending_emails": unprocessed_emails,
+            "pending_confirmations": pending_confirmations,
+            "completion_rate": completion_rate,
+            "by_status": by_status,
+            "status_counts": by_status,
+            "by_staff": by_staff,
+            "staff_counts": by_staff,
+            "recent_projects": projects[:10],
+            "projects": projects
+        })
+    except Exception as e:
+        print(f"Lỗi get_dashboard_stats: {e}")
+        return SafeStatsDict({
+            "total": 0, "total_projects": 0, "completed": 0, "completed_projects": 0,
+            "in_progress": 0, "active_projects": 0, "new_projects": 0, "pending": 0,
+            "unassigned": 0, "total_emails": 0, "unprocessed_emails": 0,
+            "pending_confirmations": 0, "completion_rate": 0.0,
+            "by_status": {}, "by_staff": {}, "recent_projects": [], "projects": []
+        })
+
+
+# ==============================================================================
+# 3. CÁC HÀM TRUY VẤN & CẬP NHẬT CÔNG TRÌNH (VIEW.PY, DETAIL.PY, CREATE.PY)
 # ==============================================================================
 
 def get_all_projects():
@@ -124,7 +237,6 @@ def get_project_by_code(project_code):
         res = supabase.table('projects').select('*').eq('project_code', project_code).limit(1).execute()
         if res.data:
             project = res.data[0]
-            # Bổ sung thêm trường staff_name đã ánh xạ sẵn để detail.py hiển thị thuận tiện
             project['staff_name'] = _resolve_display_staff_name(project.get('assigned_to'))
             return project
         return None
@@ -149,6 +261,39 @@ def get_project_by_id(project_id):
         print(f"Lỗi get_project_by_id ({project_id}): {e}")
         return None
 
+def get_all_categories():
+    """
+    Lấy danh sách danh mục từ bảng categories (hỗ trợ form tạo/sửa công trình).
+    """
+    try:
+        res = supabase.table('categories').select('*').execute()
+        return res.data if res.data else []
+    except Exception:
+        return []
+
+def get_all_staff():
+    """
+    Lấy danh sách nhân sự từ bảng profiles (hỗ trợ form chọn nhân viên).
+    """
+    try:
+        res = supabase.table('profiles').select('*').execute()
+        return res.data if res.data else []
+    except Exception:
+        return []
+
+def generate_project_code():
+    """
+    Sinh mã công trình tự động theo định dạng PRJ-YYMM-XXXX.
+    """
+    now = datetime.now()
+    prefix = f"PRJ-{now.strftime('%y%m')}-"
+    try:
+        res = supabase.table('projects').select('project_code').ilike('project_code', f"{prefix}%").execute()
+        count = len(res.data) + 1 if res.data else 1
+        return f"{prefix}{count:04d}"
+    except Exception:
+        return f"{prefix}{now.strftime('%H%M')}"
+
 def update_project_status(
     project_code_or_id,
     new_status,
@@ -160,13 +305,10 @@ def update_project_status(
 ):
     """
     Cập nhật trạng thái (và nhân sự / thông tin bổ sung) của công trình từ trang detail.py.
-    Hỗ trợ truyền vào project_code (VD: 'PRJ-2611-0014') hoặc UUID id của project,
-    đồng thời ghi vết vào bảng project_status_history.
     """
     try:
         now_iso = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         
-        # Xác định tìm theo id (UUID) hay project_code
         val_str = str(project_code_or_id).strip()
         uuid_regex = re.compile(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$', re.IGNORECASE)
         is_uuid = bool(uuid_regex.match(val_str))
@@ -194,7 +336,6 @@ def update_project_status(
         elif new_status in ["Hoàn thành", "Đã hoàn thành"] and not curr_proj.get("completed_date"):
             update_payload["completed_date"] = datetime.now().strftime('%Y-%m-%d')
 
-        # Cho phép cập nhật linh hoạt các trường khác nếu detail.py truyền qua kwargs
         allowed_extra_fields = [
             "project_name", "customer_name", "customer_phone", "project_address",
             "project_type", "brand", "category_id", "request_content", "detailed_requirements"
@@ -208,7 +349,6 @@ def update_project_status(
         else:
             res = supabase.table('projects').update(update_payload).eq('project_code', val_str).execute()
 
-        # Tự động ghi nhận lịch sử vào bảng project_status_history
         if project_id:
             try:
                 prof_res = supabase.table('profiles').select('id').limit(1).execute()
@@ -229,59 +369,84 @@ def update_project_status(
         print(f"Lỗi update_project_status: {e}")
         return False
 
-def update_project(project_code_or_id, update_data: dict):
+def update_project(project_code_or_id, update_data: dict = None, **kwargs):
     """
-    Hàm cập nhật tổng quát thông tin công trình (dự phòng nếu detail.py gọi update_project).
+    Hàm cập nhật tổng quát thông tin công trình.
     """
     try:
-        if 'assigned_to' in update_data:
-            update_data['assigned_to'] = resolve_staff_assignment(supabase, update_data['assigned_to'])
-        if 'received_date' in update_data:
-            update_data['received_date'] = format_to_iso_date(update_data['received_date'])
-        if 'due_date' in update_data:
-            update_data['due_date'] = format_to_iso_date(update_data['due_date'])
-        if 'completed_date' in update_data:
-            update_data['completed_date'] = format_to_iso_date(update_data['completed_date'])
+        payload = dict(update_data) if isinstance(update_data, dict) else {}
+        payload.update(kwargs)
 
-        update_data['updated_at'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        if 'assigned_to' in payload:
+            payload['assigned_to'] = resolve_staff_assignment(supabase, payload['assigned_to'])
+        if 'received_date' in payload:
+            payload['received_date'] = format_to_iso_date(payload['received_date'])
+        if 'due_date' in payload:
+            payload['due_date'] = format_to_iso_date(payload['due_date'])
+        if 'completed_date' in payload:
+            payload['completed_date'] = format_to_iso_date(payload['completed_date'])
+
+        payload['updated_at'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
         val_str = str(project_code_or_id).strip()
         uuid_regex = re.compile(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$', re.IGNORECASE)
         if uuid_regex.match(val_str):
-            res = supabase.table('projects').update(update_data).eq('id', val_str).execute()
+            res = supabase.table('projects').update(payload).eq('id', val_str).execute()
         else:
-            res = supabase.table('projects').update(update_data).eq('project_code', val_str).execute()
+            res = supabase.table('projects').update(payload).eq('project_code', val_str).execute()
         return True if res.data else False
     except Exception as e:
         print(f"Lỗi update_project: {e}")
         return False
 
-def create_project(project_data: dict):
+def create_project(project_data: dict = None, **kwargs):
     """
-    Hàm tạo mới công trình (dự phòng cho trang modules/projects/create.py).
+    Hàm tạo mới công trình (hỗ trợ cả truyền dictionary hoặc truyền keyword arguments).
     """
     try:
-        if not project_data.get('organization_id'):
+        payload = dict(project_data) if isinstance(project_data, dict) else {}
+        payload.update(kwargs)
+
+        if not payload.get('organization_id'):
             org_res = supabase.table('organizations').select('id').limit(1).execute()
             if org_res.data:
-                project_data['organization_id'] = org_res.data[0]['id']
+                payload['organization_id'] = org_res.data[0]['id']
 
-        if 'assigned_to' in project_data:
-            project_data['assigned_to'] = resolve_staff_assignment(supabase, project_data['assigned_to'])
-        if 'received_date' in project_data:
-            project_data['received_date'] = format_to_iso_date(project_data['received_date'])
-        if 'due_date' in project_data:
-            project_data['due_date'] = format_to_iso_date(project_data['due_date'])
+        if not payload.get('project_code'):
+            payload['project_code'] = generate_project_code()
 
-        res = supabase.table('projects').insert(project_data).execute()
+        if 'assigned_to' in payload:
+            payload['assigned_to'] = resolve_staff_assignment(supabase, payload['assigned_to'])
+        if 'received_date' in payload:
+            payload['received_date'] = format_to_iso_date(payload['received_date'])
+        if 'due_date' in payload:
+            payload['due_date'] = format_to_iso_date(payload['due_date'])
+
+        res = supabase.table('projects').insert(payload).execute()
         return res.data[0] if res.data else None
     except Exception as e:
         print(f"Lỗi create_project: {e}")
         return None
 
+def delete_project(project_code_or_id):
+    """
+    Xóa công trình theo ID hoặc mã công trình.
+    """
+    try:
+        val_str = str(project_code_or_id).strip()
+        uuid_regex = re.compile(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$', re.IGNORECASE)
+        if uuid_regex.match(val_str):
+            supabase.table('projects').delete().eq('id', val_str).execute()
+        else:
+            supabase.table('projects').delete().eq('project_code', val_str).execute()
+        return True
+    except Exception as e:
+        print(f"Lỗi delete_project: {e}")
+        return False
+
 
 # ==============================================================================
-# 3. HÀM KHỞI TẠO CÔNG TRÌNH TRỰC TIẾP TỪ EMAIL (DÙNG CHO EMAILS & CONFIRMATION)
+# 4. HÀM KHỞI TẠO CÔNG TRÌNH TRỰC TIẾP TỪ EMAIL
 # ==============================================================================
 
 def create_project_directly_from_email(
@@ -304,10 +469,11 @@ def create_project_directly_from_email(
         org_id = org_res.data[0]['id'] if org_res.data else None
 
         final_assigned_to = resolve_staff_assignment(supabase, assigned_to_uuid)
+        final_code = project_code if project_code else generate_project_code()
 
         project_payload = {
             "organization_id": org_id,
-            "project_code": project_code if project_code else None,
+            "project_code": final_code,
             "project_name": project_name,
             "customer_name": customer_name,
             "category_id": category_id if category_id else None,
